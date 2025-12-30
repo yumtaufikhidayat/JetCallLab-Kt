@@ -72,7 +72,7 @@ class WebRtcManager {
     }
 
     private fun ensureCallScope() {
-        callScope?.cancel() // CoroutineScope punya extension cancel() kalau context berisi Job
+        callScope?.cancel()
         callScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
@@ -113,7 +113,6 @@ class WebRtcManager {
         val factory = peerConnectionFactory.also { peerConnectionFactory = null }
         val egl = eglBase.also { eglBase = null }
 
-        // === baru dispose local copy ===
         runCatching { pc?.close() }
         runCatching { pc?.dispose() }
 
@@ -255,7 +254,7 @@ class WebRtcManager {
                 .setPassword("openrelayproject")
                 .createIceServer(),
 
-            // TURN TLS 443 (ini penting untuk beberapa carrier)
+            // TURN TLS 443 (necessary for some carriers)
             PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp")
                 .setUsername("openrelayproject")
                 .setPassword("openrelayproject")
@@ -267,24 +266,21 @@ class WebRtcManager {
             // For learning and exploration purpose only
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
 
-            // paksa lewat TURN relay (biar ngelewatin NAT/firewall yang rese')
+            // force it through TURN relay (to bypass annoying NAT/firewall)
             iceTransportsType = PeerConnection.IceTransportsType.ALL
 
-            // opsional tapi membantu di beberapa kasus:
+            // optional but helped for some cases
             tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
 
-            // Biar ICE tetap ngumpulin kandidat saat jaringan berubah
+            // Let the ICE to keep gathering of candidates while the network is unstable/changing
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
 
-            // (Opsional) mempercepat startup ICE; cocok buat call setup
+            // (Optional) speed up ICE startup; suitable for call setup
             iceCandidatePoolSize = 4
 
-            // TCP kandidat boleh
-            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
-
-            // (Opsional) kalau nemu issue di jaringan tertentu
-             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
-             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+            // (Optional) if found issues in some particular networks
+            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
         }
 
         val observer = object : PeerConnection.Observer {
@@ -306,8 +302,8 @@ class WebRtcManager {
                     }
 
                     PeerConnection.IceConnectionState.CLOSED -> {
-                        // CLOSED bukan failure otomatis.
-                        // Kalau belum final dan session masih aktif, baru anggap gagal.
+                        // CLOSED is not an automatic failure
+                        // If it is not final and the session is still active, it will be considered a failure
                         if (sessionActive && !finalEmitted) {
                             emitFinalFailure("ICE closed before connected")
                         }
@@ -365,7 +361,6 @@ class WebRtcManager {
                     }
 
                     PeerConnection.PeerConnectionState.CLOSED -> {
-//                        if (!finalEmitted)
                         emitFinalFailure("PeerConnection closed before connected")
                     }
 
@@ -408,7 +403,7 @@ class WebRtcManager {
         resetSessionState()
         resetFinalOutcome()
 
-        startConnectTimeout(30) // Indikator gagal final jika tidak connect
+        startConnectTimeout(30) // Failed final indicator if unreachable/can't be connected
 
         listener?.onState(CallState.Preparing)
         init(context)
@@ -488,7 +483,7 @@ class WebRtcManager {
         resetSessionState()
         resetFinalOutcome()
 
-        startConnectTimeout(30) // Indikator gagal final jika tidak connect
+        startConnectTimeout(30)  // Failed final indicator if unreachable/can't be connected
 
         listener?.onState(CallState.Preparing)
         init(context)
