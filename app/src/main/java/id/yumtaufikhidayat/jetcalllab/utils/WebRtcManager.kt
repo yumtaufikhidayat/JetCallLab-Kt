@@ -59,6 +59,12 @@ class WebRtcManager {
     private var finalEmitted = false
     private var connectTimeoutJob: Job? = null
 
+    private var audioManager: AudioManager? = null
+    private var audioFocusChangeListener: AudioManager.OnAudioFocusChangeListener? = null
+    private var prevAudioMode: Int? = null
+    private var prevSpeakerOn: Boolean? = null
+    private var prevBluetoothScoOn: Boolean? = null
+
     private val iceCount = mutableMapOf(
         "host" to 0, "srflx" to 0, "prflx" to 0, "relay" to 0, "unknown" to 0
     )
@@ -122,6 +128,7 @@ class WebRtcManager {
         runCatching { factory?.dispose() }
         runCatching { egl?.release() }
 
+        releaseAudioResources()
         listener?.onState(CallState.Idle)
     }
 
@@ -190,16 +197,26 @@ class WebRtcManager {
     }
 
     private fun setupAudioManager(context: Context) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.apply {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager = am
+
+        prevAudioMode = am.mode
+        prevSpeakerOn = am.isSpeakerphoneOn
+        prevBluetoothScoOn = am.isBluetoothScoOn
+
+        audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { /* no-op */ }
+
+        am.apply {
             stopBluetoothSco()
             isBluetoothScoOn = false
             isBluetoothA2dpOn = false
 
             mode = AudioManager.MODE_IN_COMMUNICATION
-            isSpeakerphoneOn = true
+            isSpeakerphoneOn = false
+
+            @Suppress("DEPRECATION")
             requestAudioFocus(
-                { /* ignore for now */ },
+                audioFocusChangeListener,
                 AudioManager.STREAM_VOICE_CALL,
                 AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
             )
@@ -233,10 +250,12 @@ class WebRtcManager {
         }
 
         val iceServers = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302")
+            // STUN (srflx)
+            PeerConnection.IceServer.builder("stun:stun.relay.metered.ca:80")
                 .createIceServer(),
 
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302")
+                .createIceServer(),
 
             PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
                 .setUsername("openrelayproject")
@@ -361,7 +380,8 @@ class WebRtcManager {
                     }
 
                     PeerConnection.PeerConnectionState.CLOSED -> {
-                        emitFinalFailure("PeerConnection closed before connected")
+//                        if (sessionActive && !finalEmitted) emitFinalFailure("PeerConnection closed before connected")
+                        Log.w("RTC", "PC CLOSED (not treating as final failure)")
                     }
 
                     else -> Unit
@@ -403,7 +423,7 @@ class WebRtcManager {
         resetSessionState()
         resetFinalOutcome()
 
-        startConnectTimeout(30) // Failed final indicator if unreachable/can't be connected
+        startConnectTimeout() // Failed final indicator if unreachable/can't be connected
 
         listener?.onState(CallState.Preparing)
         init(context)
@@ -423,7 +443,6 @@ class WebRtcManager {
 
         callScope?.launch {
             signaling.resetRoom(roomId)
-            delay(300)
             peerConnection?.createOffer(object : SdpObserver {
                 override fun onCreateSuccess(desc: SessionDescription) {
                     if (!guardActive()) return
@@ -483,7 +502,7 @@ class WebRtcManager {
         resetSessionState()
         resetFinalOutcome()
 
-        startConnectTimeout(30)  // Failed final indicator if unreachable/can't be connected
+        startConnectTimeout()  // Failed final indicator if unreachable/can't be connected
 
         listener?.onState(CallState.Preparing)
         init(context)
@@ -601,5 +620,53 @@ class WebRtcManager {
         finalEmitted = false
         connectTimeoutJob?.cancel()
         connectTimeoutJob = null
+    }
+
+    private fun releaseAudioResources() {
+        val am = audioManager ?: run {
+            audioFocusChangeListener = null
+            prevAudioMode = null
+            prevSpeakerOn = null
+            prevBluetoothScoOn = null
+            return
+        }
+
+        runCatching {
+            // Abandon focus (legacy)
+            @Suppress("DEPRECATION")
+            audioFocusChangeListener?.let { am.abandonAudioFocus(it) }
+        }
+
+        runCatching {
+            // Restore previous audio states
+            prevAudioMode?.let { am.mode = it }
+            prevSpeakerOn?.let { am.isSpeakerphoneOn = it }
+            prevBluetoothScoOn?.let { am.isBluetoothScoOn = it }
+            am.stopBluetoothSco()
+        }
+
+        audioFocusChangeListener = null
+        prevAudioMode = null
+        prevSpeakerOn = null
+        prevBluetoothScoOn = null
+        audioManager = null
+    }
+
+    fun setMuted(muted: Boolean) {
+        runCatching {
+            audioTrack?.setEnabled(!muted)
+        }.onFailure {
+            Log.w("RTC", "setMuted failed", it)
+        }
+    }
+
+    fun setSpeakerOn(on: Boolean) {
+        val am = audioManager ?: return
+        runCatching {
+            am.mode = AudioManager.MODE_IN_COMMUNICATION
+            am.isSpeakerphoneOn = on
+        }.onFailure {
+            Log.w("RTC", "setSpeakerOn failed", it)
+        }
     }
 }
