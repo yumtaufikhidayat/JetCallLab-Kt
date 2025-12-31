@@ -1,51 +1,115 @@
 package id.yumtaufikhidayat.jetcalllab.ui.viewmodel
 
+import android.app.Application
+import android.content.ComponentName
 import android.content.Context
-import androidx.lifecycle.ViewModel
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import id.yumtaufikhidayat.jetcalllab.service.CallService
 import id.yumtaufikhidayat.jetcalllab.state.CallState
-import id.yumtaufikhidayat.jetcalllab.utils.WebRtcManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
-class CallViewModel: ViewModel(), WebRtcManager.Listener {
-
-    private val webRtc = WebRtcManager()
+class CallViewModel(application: Application): AndroidViewModel(application) {
 
     private val _state = MutableStateFlow<CallState>(CallState.Idle)
     val state = _state.asStateFlow()
 
-    @Volatile private var uiVisible = true
+    private val _elapsedSeconds = MutableStateFlow(0L)
+    val elapsedSeconds = _elapsedSeconds.asStateFlow()
+
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted = _isMuted.asStateFlow()
+
+    private val _isSpeakerOn = MutableStateFlow(false)
+    val isSpeakerOn = _isSpeakerOn.asStateFlow()
+
+    private var callService: CallService? = null
+    private var serviceBound = false
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(
+            name: ComponentName?,
+            service: IBinder?
+        ) {
+            val binder = service as CallService.LocalBinder
+            callService = binder.service()
+            serviceBound = true
+
+            // bridge flows from service → viewModel
+            observeServiceState()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            serviceBound = false
+            callService = null
+            _state.value = CallState.Idle
+            _elapsedSeconds.value = 0L
+        }
+    }
 
     init {
-        webRtc.setListener(this)
+        bindService()
     }
 
-    fun onUiVisible() { uiVisible = true }
-    fun onUiHidden() { uiVisible = false }
-
-    fun startCaller(context: Context, roomId: String) {
-        webRtc.startCallAsCaller(context, roomId)
+    private fun bindService() {
+        val context = getApplication<Application>()
+        val intent = Intent(context, CallService::class.java)
+        context.startService(intent)
+        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
 
-    fun joinCallee(context: Context, roomId: String) {
-        webRtc.joinCallAsCallee(context, roomId)
+    private fun observeServiceState() {
+        val service = callService ?: return
+
+        viewModelScope.launch {
+            service.state.collect { state -> _state.value = state }
+        }
+
+        viewModelScope.launch {
+            service.elapsedSeconds.collect { time -> _elapsedSeconds.value = time }
+        }
+
+        viewModelScope.launch {
+            service.isMuted.collect { mute -> _isMuted.value = mute }
+        }
+
+        viewModelScope.launch {
+            service.isSpeakerOn.collect { on -> _isSpeakerOn.value = on }
+        }
+    }
+
+    fun toggleMute() {
+        callService?.toggleMute()
+    }
+
+    fun toggleSpeaker() {
+        callService?.toggleSpeaker()
+    }
+
+    fun startCaller(roomId: String) {
+        callService?.startCaller(roomId)
+    }
+
+    fun joinCallee(roomId: String) {
+        callService?.joinCallee(roomId)
     }
 
     fun endCall() {
-        webRtc.endCall()
-    }
-
-    override fun onState(state: CallState) {
-        _state.value = state
-    }
-
-    override fun onError(message: String) {
-        _state.value = CallState.Failed(message)
+        callService?.endCall()
     }
 
     override fun onCleared() {
-        webRtc.setListener(null)
-        webRtc.endCall()
+        val context = getApplication<Application>()
+        if (serviceBound) {
+            context.unbindService(connection)
+            serviceBound = false
+        }
+        callService = null
         super.onCleared()
     }
 }
