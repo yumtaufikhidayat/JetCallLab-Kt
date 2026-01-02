@@ -45,17 +45,17 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 > Minimal call playground UI (Caller/Callee) with timer + mute/speaker toggles.
 
-<table>
-  <tr>
-    <td align="center">
+<table border="0" cellspacing="0" cellpadding="0" style="border:none;border-collapse:collapse;">
+  <tr style="border:none;">
+    <td align="center" style="border:none;padding:0 12px;">
       <img src="docs/images/tab_preview.png" alt="CallScreen - Caller/Offer" width="320"/>
       <br/>
-      <sub><b>Tab Preview</b></sub>
+      <sub><b>Tab Preview - Caller</b></sub>
     </td>
-    <td align="center">
+    <td align="center" style="border:none;padding:0 12px;">
       <img src="docs/images/phone_preview.jpg" alt="CallScreen - Callee/Answer" width="320"/>
       <br/>
-      <sub><b>Call Preview</b></sub>
+      <sub><b>Call Preview - Callee/Answer</b></sub>
     </td>
   </tr>
 </table>
