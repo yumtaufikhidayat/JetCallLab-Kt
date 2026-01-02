@@ -53,7 +53,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
       <sub><b>Tab Preview</b></sub>
     </td>
     <td align="center">
-      <img src="docs/images/phone_preview.png" alt="CallScreen - Call Preview" width="320"/>
+      <img src="docs/images/phone_preview.jpg" alt="CallScreen - Call Preview" width="320"/>
       <br/>
       <sub><b>Call Preview</b></sub>
     </td>
