@@ -1,13 +1,12 @@
 # JetCallLab
 **Android WebRTC Audio Call Lab (Firestore Signaling + Foreground Service)**
+
 JetCallLab is a **learning-oriented Android project** to explore how **real-time audio calls** work end-to-end using **WebRTC**, with a strong focus on:
 - Signaling flow (Offer / Answer / ICE)
 - Android lifecycle & background execution
 - Resource management (audio, service, peer connection)
 - Clean separation between UI, state, and call engine
-
-> This project is not meant to be production-ready.  
-> It is intentionally built as a **lab / playground** to understand how apps like WhatsApp, Telegram, Zoom, or Google Meet work under the hood.
+> ⚠️ This project is not meant to be production-ready. It is intentionally built as a **lab / playground** to understand how apps like WhatsApp, Telegram, Zoom, or Google Meet work under the hood.
 
 ---
 
@@ -37,18 +36,24 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 - ✅ **Call timer** (elapsed time)
 - ✅ **Mute / Unmute**
 - ✅ **Speaker On / Off**
+- ✅ Auto audio routing
+     - Wired headset wins
+     - Bluetooth SCO auto-connect when earbuds/headset connected
+     - Speaker only when user toggles it
+     - Routing decisions are re-evaluated on device changes
+- ✅ Bluetooth active indicator (derived from AudioManager & SCO state)
 - ✅ Safe cleanup to avoid memory & audio leaks
 
 ---
 
 ## UI Preview
 
-> Minimal call playground UI (Caller/Callee) with timer + mute/speaker toggles.
+> Minimal call playground UI (Caller/Callee) with timer, mute/speaker toggles, and Bluetooth indicator.
 
 <table border="0" cellspacing="0" cellpadding="0" style="border:none;border-collapse:collapse;">
   <tr style="border:none;">
     <td align="center" style="border:none;padding:0 12px;">
-      <img src="docs/images/tab_preview.png" alt="CallScreen - Caller/Offer" width="320"/>
+      <img src="docs/images/tab_preview.jpg" alt="CallScreen - Caller/Offer" width="320"/>
       <br/>
       <sub><b>Device 1 (Tablet) as Caller</b></sub>
     </td>
@@ -73,24 +78,26 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 ```
 app/
 └── src/main/java/id/yumtaufikhidayat/jetcalllab/
+├── enum/
+│   └── AudioRoute.kt             # EARPIECE / SPEAKER (Bluetooth is auto-detected)
 ├── service/
-│   └── CallService.kt            # Foreground Service: owns call lifecycle, timers, mute/speaker state
+│   └── CallService.kt            # Foreground Service: owns call lifecycle, timers, audio/mute/speaker state
 │
 ├── state/
 │   └── CallState.kt              # Call state machine / UI states (Idle, Preparing, Connected, Failed, etc.)
 │
 ├── ui/
 │   ├── screen/
-│   │   └── CallScreen.kt          # Compose UI screen (buttons: Call/Answer/End/Mute/Speaker)
+│   │   └── CallScreen.kt          # Compose UI screen (buttons: Call/Answer/End/Mute/Speaker/Bluetooth indicator)
 │   └── theme/                     # Compose theme (colors, typography, shapes)
 │
 ├── viewmodel/
-│   └── CallViewModel.kt           # UI state holder; binds to CallService & exposes StateFlow to UI
+│   └── CallViewModel.kt           # UI state holder; bridges Service → Compose
 │
 ├── utils/
 │   ├── FirestoreSignaling.kt      # Signaling via Firestore (offer/answer + ICE candidates)
-│   ├── WebRtcManager.kt           # WebRTC core (PeerConnection, ICE, audio track, speaker/mute controls)
-│   └── LongExt.kt                 # Extensions (e.g., elapsed time formatting HH:MM:SS)
+│   ├── WebRtcManager.kt           # WebRTC core (PeerConnection, ICE, audio track, speaker/mute controls) + audio routing & Bluetooth SCO handling
+│   └── LongExt.kt                 # Time formatting utilities (e.g., elapsed time formatting HH:MM:SS)
 │
 └── MainActivity.kt                # Android entry point; hosts Compose content
 ```
@@ -102,22 +109,31 @@ app/
 ### `CallService`
 - Runs the call session inside a **Foreground Service**
 - Owns call lifecycle and audio routing
-- Exposes `StateFlow`:
-    - `CallState`
-    - `elapsedSeconds`
-    - `isMuted`
-    - `isSpeakerOn`
+- Exposes:
+    - `state: StateFlow<CallState>`
+    - `elapsedSeconds: StateFlow<Long>`
+    - `isMuted: StateFlow<Boolean>`
+    - `isSpeakerOn: StateFlow<Boolean>`
+    - `isBluetoothActive: StateFlow<Boolean>`
 
 ### `WebRtcManager`
-- Initializes WebRTC (`PeerConnectionFactory`, AudioDeviceModule)
+- Initializes WebRTC (`PeerConnectionFactory`, `AudioDeviceModule`)
 - Handles:
     - ICE server configuration (STUN / TURN)
     - Offer / Answer creation
     - ICE candidate exchange
+- Manages **Android audio routing**
+    - Wired headset detection
+    - Bluetooth SCO auto-routing (no manual toggle)
+    - Speaker routing via `AudioRoute`
+- Exposes:
+    - `isBluetoothActive: StateFlow<Boolean>`
+        - Derived from `AudioManager` + `ACTION_SCO_AUDIO_STATE_UPDATED`
 - Responsible for **full cleanup**:
     - PeerConnection
     - Audio tracks
-    - Audio focus & routing
+    - Audio focus & routing restoration
+
 
 ### `FirestoreSignaling`
 - Signaling channel implementation using **Firebase Firestore**
@@ -136,6 +152,7 @@ app/
 - Call / Answer / End
 - Mute & Speaker toggle
 - Timer & call state rendering
+- Bluetooth on/off indicator
 
 ---
 
@@ -148,7 +165,7 @@ app/
 - **Android Foreground Service**
 
 ### WebRTC
-- `org.webrtc` (Google WebRTC SDK)
+- `libwebrtc-M124` ([TCommSDK](https://gitlab.com/livechatsdk/mobile))
     - `PeerConnection`
     - `AudioTrack`
     - `ICE / SDP / RTP handling`
@@ -162,6 +179,7 @@ app/
 - `AudioManager`
 - `JavaAudioDeviceModule`
 - Hardware Echo Cancellation & Noise Suppression (when available)
+- Bluetooth SCO routing (device dependent)
 
 ### Others
 - Accompanist Permissions (mic permission)
@@ -211,6 +229,7 @@ rooms/{roomId}/calleeCandidates/{autoId}
 5. One device taps **Call**
 6. The other taps **Answer**
 7. Minimize app → call continues (Foreground Service)
+8. Connect Bluetooth earbuds/headset → audio will auto-route (device dependent)
 
 ---
 
@@ -218,13 +237,23 @@ rooms/{roomId}/calleeCandidates/{autoId}
 
 - **Mute**
     - `audioTrack.setEnabled(false)`
+
 - **Speaker**
-    - Controlled via `AudioManager.isSpeakerphoneOn`
+    - Controlled via `AudioRoute` + `AudioManager.isSpeakerphoneOn`
+
+- **Bluetooth (Auto)**
+    - Bluetooth is **not manually toggled**
+    - If a Bluetooth SCO device is detected:
+        - App requests SCO automatically
+        - System routes audio to the device
+    - UI indicator reflects **actual SCO connection state**
+        - `true` = SCO connected
+        - `false` = disconnected or unavailable
+
 - **Timer**
     - Based on `SystemClock.elapsedRealtime()`
-    - Resilient to UI recreation
+    - Safe across UI recreation
 
-> Speaker & Bluetooth routing behavior may vary between devices.
 
 ---
 
@@ -267,6 +296,7 @@ This prevents:
 - No authentication for signaling
 - No ICE restart / reconnect logic
 - Audio echo can occur when two devices are physically close
+- Bluetooth SCO behavior varies a lot across OEM (some require manual user interaction)
 
 ---
 
@@ -274,7 +304,7 @@ This prevents:
 
 - [ ] Incoming call notification
 - [ ] ICE restart / reconnect
-- [ ] Bluetooth SCO routing improvements
+- [✅] Bluetooth SCO routing improvements
 - [ ] Call quality metrics
 - [ ] Secure signaling rules
 
