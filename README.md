@@ -41,6 +41,23 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 ---
 
+## UI Preview
+
+> Minimal call playground UI (Caller/Callee) with timer + mute/speaker toggles.
+
+<p align="center">
+  <img src="docs/images/tab_preview.png" alt="CallScreen UI" width="320"/>
+</p>
+
+### What you can do
+- Start as **Caller** or **Callee** using the same `roomId`
+- Observe **call state** transitions
+- See **call duration timer**
+- Toggle **Mute / Speaker**
+- Toggle **End**
+
+---
+
 ## Project Structure
 ```
 app/
@@ -66,6 +83,8 @@ app/
 │
 └── MainActivity.kt                # Android entry point; hosts Compose content
 ```
+
+---
 
 ## Core Components
 
