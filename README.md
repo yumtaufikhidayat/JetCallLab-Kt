@@ -80,6 +80,7 @@ app/
 └── src/main/java/id/yumtaufikhidayat/jetcalllab/
 ├── enum/
 │   └── AudioRoute.kt             # EARPIECE / SPEAKER (Bluetooth is auto-detected)
+│
 ├── service/
 │   └── CallService.kt            # Foreground Service: owns call lifecycle, timers, audio/mute/speaker state
 │
@@ -304,7 +305,7 @@ This prevents:
 
 - [ ] Incoming call notification
 - [ ] ICE restart / reconnect
-- [✅] Bluetooth SCO routing improvements
+- [x] Bluetooth SCO routing improvements
 - [ ] Call quality metrics
 - [ ] Secure signaling rules
 
