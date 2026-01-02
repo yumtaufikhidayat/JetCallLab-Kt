@@ -50,12 +50,12 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
     <td align="center" style="border:none;padding:0 12px;">
       <img src="docs/images/tab_preview.png" alt="CallScreen - Caller/Offer" width="320"/>
       <br/>
-      <sub><b>Tab Preview - Caller</b></sub>
+      <sub><b>Device 1 (Tablet) as Caller</b></sub>
     </td>
     <td align="center" style="border:none;padding:0 12px;">
       <img src="docs/images/phone_preview.jpg" alt="CallScreen - Callee/Answer" width="320"/>
       <br/>
-      <sub><b>Call Preview - Callee/Answer</b></sub>
+      <sub><b>Device 2 (Phone) as Callee/Answer</b></sub>
     </td>
   </tr>
 </table>
