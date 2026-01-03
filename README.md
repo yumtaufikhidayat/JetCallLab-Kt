@@ -166,7 +166,7 @@ app/
 - **Android Foreground Service**
 
 ### WebRTC
-- `libwebrtc-M124` ([TCommSDK](https://gitlab.com/livechatsdk/mobile))
+- `org.webrtc` (Google SDK)
     - `PeerConnection`
     - `AudioTrack`
     - `ICE / SDP / RTP handling`
