@@ -40,8 +40,13 @@ class CallService : Service(), WebRtcManager.Listener {
     private val _isSpeakerOn = MutableStateFlow(false)
     val isSpeakerOn: StateFlow<Boolean> = _isSpeakerOn.asStateFlow()
 
+    private val _isBluetoothActive = MutableStateFlow(false)
+    val isBluetoothActive: StateFlow<Boolean> = _isBluetoothActive.asStateFlow()
+
     private var callStartElapsedMs: Long? = null
     private var timerJob: Job? = null
+
+    private var btJob: Job? = null
 
     inner class LocalBinder : Binder() {
         fun service(): CallService = this@CallService
@@ -53,9 +58,19 @@ class CallService : Service(), WebRtcManager.Listener {
     override fun onCreate() {
         super.onCreate()
         webRtc.setListener(this)
+
+        btJob?.cancel()
+        btJob = serviceScope.launch {
+            webRtc.isBluetoothActive.collect { active ->
+                _isBluetoothActive.value = active
+            }
+        }
     }
 
     override fun onDestroy() {
+        btJob?.cancel()
+        btJob = null
+
         webRtc.setListener(null)
         webRtc.endCall()
         stopTimer(reset = true)
@@ -65,6 +80,7 @@ class CallService : Service(), WebRtcManager.Listener {
 
     fun startCaller(roomId: String) {
         startAsForegroundIfNeeded()
+
 
         webRtc.setSpeakerOn(_isSpeakerOn.value)
         webRtc.setMuted(_isMuted.value)
