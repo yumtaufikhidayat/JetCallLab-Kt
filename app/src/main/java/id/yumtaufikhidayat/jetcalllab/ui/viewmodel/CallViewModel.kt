@@ -28,6 +28,9 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
     private val _isSpeakerOn = MutableStateFlow(false)
     val isSpeakerOn = _isSpeakerOn.asStateFlow()
 
+    private val _isBluetoothActive = MutableStateFlow(false)
+    val isBluetoothActive = _isBluetoothActive.asStateFlow()
+
     private var callService: CallService? = null
     private var serviceBound = false
 
@@ -80,6 +83,10 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
         viewModelScope.launch {
             service.isSpeakerOn.collect { on -> _isSpeakerOn.value = on }
+        }
+
+        viewModelScope.launch {
+            service.isBluetoothActive.collect { active -> _isBluetoothActive.value = active }
         }
     }
 
