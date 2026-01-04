@@ -46,7 +46,7 @@ dependencies {
     implementation(fileTree("libs") { include("*.aar") })
 
     // Core
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
