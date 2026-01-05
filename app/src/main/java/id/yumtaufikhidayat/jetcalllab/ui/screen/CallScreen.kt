@@ -49,6 +49,7 @@ fun CallScreen(
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
+    val isBluetoothActive by viewModel.isBluetoothActive.collectAsState()
 
     val inCall = state !is CallState.Idle
 
@@ -135,5 +136,7 @@ fun CallScreen(
         Text(text = "Mute: ${if (isMuted) "on" else "off"}")
 
         Text(text = "Speaker: ${if (isSpeakerOn) "on" else "off"}")
+
+        Text(text = "Bluetooth: ${if (isBluetoothActive) "on" else "off"}")
     }
 }
