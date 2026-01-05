@@ -304,7 +304,7 @@ This prevents:
 ## Roadmap
 
 - [ ] Incoming call notification
-- [ ] ICE restart / reconnect
+- [x] ICE restart / reconnect
 - [x] Bluetooth SCO routing improvements
 - [ ] Call quality metrics
 - [ ] Secure signaling rules
