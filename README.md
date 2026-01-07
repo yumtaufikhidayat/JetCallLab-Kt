@@ -354,7 +354,7 @@ This prevents:
 
 - [x] Bluetooth SCO auto-routing
 - [x] Reconnect state & recovery indicator
-- [x] Explore proximity sensor-based screen dimming during calls
+- [x] Proximity sensor integration with WakeLock for in-call screen management
 - [ ] Explicit ICE restart support
 - [ ] PeerConnection rebuild on unrecoverable failure
 - [ ] Incoming call notification
