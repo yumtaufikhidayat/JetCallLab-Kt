@@ -10,6 +10,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.google.firebase.firestore.ListenerRegistration
 import id.yumtaufikhidayat.jetcalllab.enum.AudioRoute
@@ -69,13 +70,26 @@ class WebRtcManager {
 
     @Volatile
     private var finalEmitted = false
+
     private var connectTimeoutJob: Job? = null
+    private var reconnectJob: Job? = null
+
+    @Volatile
+    private var reconnecting = false
+
+    @Volatile
+    private var reconnectAttempt = 0
+
+    private var reconnectStartElapsedMs: Long? = null
 
     @Volatile
     private var desiredRoute: AudioRoute = AudioRoute.EARPIECE
 
     @Volatile
     private var lastScoState: Int = AudioManager.SCO_AUDIO_STATE_DISCONNECTED
+
+    @Volatile
+    private var everConnected = false
 
     private var audioManager: AudioManager? = null
     private var audioFocusChangeListener: AudioManager.OnAudioFocusChangeListener? = null
@@ -346,12 +360,24 @@ class WebRtcManager {
                     PeerConnection.IceConnectionState.CONNECTED,
                     PeerConnection.IceConnectionState.COMPLETED -> {
                         // FINAL SUCCESS via ICE
-                        emitFinalSuccess(via = "ICE:$state")
+                        if (!everConnected) {
+                            everConnected = true
+                            emitFinalSuccess(via = "ICE: $state")
+                        } else {
+                            stopReconnectingIfAny(via = "ICE: $state")
+                        }
+                    }
+
+                    PeerConnection.IceConnectionState.DISCONNECTED -> {
+                        // FINAL FAILED via ICE
+                        if (everConnected) startReconnecting(reason = "ICE disconnected")
                     }
 
                     PeerConnection.IceConnectionState.FAILED -> {
                         // FINAL FAILED via ICE
-                        emitFinalFailure("ICE failed")
+                        if (everConnected) startReconnecting("ICE failed")
+
+                        // Next step will trigger ICE restart / rebuild PC
                     }
 
                     PeerConnection.IceConnectionState.CLOSED -> {
@@ -405,7 +431,12 @@ class WebRtcManager {
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
                         // FINAL SUCCESS via PeerConnection
-                        emitFinalSuccess(via = "PC:CONNECTED")
+                        if (!everConnected) {
+                            everConnected = true
+                            emitFinalSuccess("PC:CONNECTED")
+                        } else {
+                            stopReconnectingIfAny("PC:CONNECTED") // atau listener Connected
+                        }
                     }
 
                     PeerConnection.PeerConnectionState.FAILED -> {
@@ -652,8 +683,12 @@ class WebRtcManager {
 
     private fun resetFinalOutcome() {
         finalEmitted = false
-        connectTimeoutJob?.cancel()
-        connectTimeoutJob = null
+        everConnected = false
+        reconnectAttempt = 0
+        reconnecting = false
+        reconnectJob?.cancel(); reconnectJob = null
+        reconnectStartElapsedMs = null
+        connectTimeoutJob?.cancel(); connectTimeoutJob = null
     }
 
     private fun releaseAudioResources() {
@@ -845,5 +880,51 @@ class WebRtcManager {
         prevBluetoothScoOn = null
         audioManager = null
         appContext = null
+    }
+
+    private fun startReconnecting(reason: String, timeoutSec: Long = 25) {
+        if (!guardActive()) return
+        if (!everConnected) return
+        if (reconnecting) return
+
+        reconnecting = true
+        reconnectAttempt += 1
+        reconnectStartElapsedMs = SystemClock.elapsedRealtime()
+
+        reconnectJob?.cancel()
+        reconnectJob = callScope?.launch {
+            while (true) {
+                val start = reconnectStartElapsedMs ?: break
+                val elapsed = (SystemClock.elapsedRealtime() - start) / 1000L
+                listener?.onState(CallState.Reconnecting(reason, reconnectAttempt, elapsed))
+
+                if (elapsed >= timeoutSec) {
+                    // For minimal: totally failed
+                    emitFinalFailure("Reconnect timeout (${timeoutSec}s): $reason")
+                    break
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun stopReconnectingIfAny(via: String) {
+        if (!reconnecting) {
+            listener?.onState(CallState.Connected(via))
+            return
+        }
+
+        reconnecting = false
+        reconnectJob?.cancel()
+        reconnectJob = null
+        reconnectStartElapsedMs = null
+
+        listener?.onState(CallState.Connected(via))
+    }
+
+    private fun emitConnected(via: String) {
+        connectTimeoutJob?.cancel()
+        connectTimeoutJob = null
+        listener?.onState(CallState.Connected(via))
     }
 }
