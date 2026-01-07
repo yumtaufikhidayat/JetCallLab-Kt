@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import id.yumtaufikhidayat.jetcalllab.service.CallService
 import id.yumtaufikhidayat.jetcalllab.state.CallState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -34,6 +35,8 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
     private var callService: CallService? = null
     private var serviceBound = false
 
+    private var collectJob: Job? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(
             name: ComponentName?,
@@ -48,8 +51,12 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
+            collectJob?.cancel()
+            collectJob = null
+
             serviceBound = false
             callService = null
+
             _state.value = CallState.Idle
             _elapsedSeconds.value = 0L
         }
@@ -69,24 +76,27 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
     private fun observeServiceState() {
         val service = callService ?: return
 
-        viewModelScope.launch {
-            service.state.collect { state -> _state.value = state }
-        }
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
+            launch {
+                service.state.collect { state -> _state.value = state }
+            }
 
-        viewModelScope.launch {
-            service.elapsedSeconds.collect { time -> _elapsedSeconds.value = time }
-        }
+            launch {
+                service.elapsedSeconds.collect { time -> _elapsedSeconds.value = time }
+            }
 
-        viewModelScope.launch {
-            service.isMuted.collect { mute -> _isMuted.value = mute }
-        }
+            launch {
+                service.isMuted.collect { mute -> _isMuted.value = mute }
+            }
 
-        viewModelScope.launch {
-            service.isSpeakerOn.collect { on -> _isSpeakerOn.value = on }
-        }
+            launch {
+                service.isSpeakerOn.collect { on -> _isSpeakerOn.value = on }
+            }
 
-        viewModelScope.launch {
-            service.isBluetoothActive.collect { active -> _isBluetoothActive.value = active }
+            launch {
+                service.isBluetoothActive.collect { active -> _isBluetoothActive.value = active }
+            }
         }
     }
 

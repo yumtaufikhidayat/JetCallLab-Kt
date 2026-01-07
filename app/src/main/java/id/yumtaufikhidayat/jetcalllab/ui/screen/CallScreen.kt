@@ -138,5 +138,24 @@ fun CallScreen(
         Text(text = "Speaker: ${if (isSpeakerOn) "on" else "off"}")
 
         Text(text = "Bluetooth: ${if (isBluetoothActive) "on" else "off"}")
+
+        when (val s = state) {
+            is CallState.Reconnecting -> {
+                Text("Reconnecting… (${s.elapsedSeconds}s)")
+                Text("Attempt: ${s.attempt}")
+            }
+            is CallState.Connected -> {
+                Text("Connected")
+                Text("Via: ${s.via}")
+            }
+            is CallState.ConnectedFinal -> {
+                Text("Connected")
+                Text("Via: ${s.via}")
+            }
+            is CallState.FailedFinal -> {
+                Text("Failed: ${s.reason}")
+            }
+            else -> Unit
+        }
     }
 }
