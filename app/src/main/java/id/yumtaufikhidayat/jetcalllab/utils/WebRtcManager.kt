@@ -14,6 +14,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.google.firebase.firestore.ListenerRegistration
 import id.yumtaufikhidayat.jetcalllab.enum.AudioRoute
+import id.yumtaufikhidayat.jetcalllab.enum.RoutePreference
 import id.yumtaufikhidayat.jetcalllab.state.CallState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +92,9 @@ class WebRtcManager {
     @Volatile
     private var everConnected = false
 
+    @Volatile
+    private var routePreference: RoutePreference = RoutePreference.AUTO
+
     private var audioManager: AudioManager? = null
     private var audioFocusChangeListener: AudioManager.OnAudioFocusChangeListener? = null
     private var prevAudioMode: Int? = null
@@ -103,6 +107,12 @@ class WebRtcManager {
 
     private val _isBluetoothActive = MutableStateFlow(false)
     val isBluetoothActive: StateFlow<Boolean> = _isBluetoothActive.asStateFlow()
+
+    private val _isBluetoothAvailable = MutableStateFlow(false)
+    val isBluetoothAvailable: StateFlow<Boolean> = _isBluetoothAvailable.asStateFlow()
+
+    private val _isWiredActive = MutableStateFlow(false)
+    val isWiredActive: StateFlow<Boolean> = _isWiredActive.asStateFlow()
 
     private val iceCount = mutableMapOf(
         "host" to 0, "srflx" to 0, "prflx" to 0, "relay" to 0, "unknown" to 0
@@ -197,13 +207,11 @@ class WebRtcManager {
         }
     }
 
-
     private fun flushPendingIce() {
         val peerConnection = peerConnection ?: return
         pendingIce.forEach { peerConnection.addIceCandidate(it) }
         pendingIce.clear()
     }
-
 
     interface Listener {
         fun onState(state: CallState)
@@ -217,8 +225,11 @@ class WebRtcManager {
         val mContext = appContext ?: return
 
         setupAudioManager(mContext)
-        registerAudioDeviceMonitoring(mContext)
+        registerAudioDeviceMonitoring()
         registerScoReceiver(mContext)
+
+        refreshDeviceSignals()
+        applyAudioRoute()
 
         val initializationOptions = PeerConnectionFactory
             .InitializationOptions.builder(context)
@@ -257,7 +268,6 @@ class WebRtcManager {
         am.apply {
             stopBluetoothSco()
             isBluetoothScoOn = false
-            isBluetoothA2dpOn = false
 
             mode = AudioManager.MODE_IN_COMMUNICATION
             isSpeakerphoneOn = false
@@ -726,11 +736,13 @@ class WebRtcManager {
     }
 
     fun setSpeakerOn(on: Boolean) {
+        // Speaker toggle is an explicit user intent, must override BT
+        routePreference = if (on) RoutePreference.SPEAKER else RoutePreference.AUTO
         desiredRoute = if (on) AudioRoute.SPEAKER else AudioRoute.EARPIECE
         applyAudioRoute()
     }
 
-    private fun registerAudioDeviceMonitoring(context: Context) {
+    private fun registerAudioDeviceMonitoring() {
         val am = audioManager ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
 
@@ -739,11 +751,13 @@ class WebRtcManager {
         val cb = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo?>?) {
                 // if device entered, please reroute (eg: BT just connected)
+                refreshDeviceSignals()
                 applyAudioRoute()
             }
 
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo?>?) {
                 // if BT/wired removed/released, give fallback
+                refreshDeviceSignals()
                 applyAudioRoute()
             }
         }
@@ -765,12 +779,19 @@ class WebRtcManager {
                 )
 
                 lastScoState = state
+                refreshDeviceSignals()
 
                 when (state) {
                     AudioManager.SCO_AUDIO_STATE_CONNECTED -> {
-                        _isBluetoothActive.value = true
-                        // Optional: ensure speaker off when BT connected
-                        audioManager?.isSpeakerphoneOn = false
+                        if (routePreference == RoutePreference.SPEAKER) {
+                            // user wants speaker, don't let SCO hijack route
+                            _isBluetoothActive.value = false
+                            audioManager?.let { stopScoIfAny(it) }
+                            applyAudioRoute()
+                        } else {
+                            _isBluetoothActive.value = true
+                            applyAudioRoute() // re-apply rule; don't directly set isSpeakerphoneOn here
+                        }
                     }
 
                     AudioManager.SCO_AUDIO_STATE_DISCONNECTED -> {
@@ -819,41 +840,60 @@ class WebRtcManager {
         }
     }
 
+    private fun refreshDeviceSignals() {
+        // Availability = "device exists"
+        _isBluetoothAvailable.value = hasBluetoothScoDevice()
+
+        // Wired = actual wired output device presence
+        _isWiredActive.value = hasWiredHeadset()
+
+        // If BT device is not available, force active = false (avoid stale true)
+        if (!_isBluetoothAvailable.value) {
+            _isBluetoothActive.value = false
+            lastScoState = AudioManager.SCO_AUDIO_STATE_DISCONNECTED
+        }
+    }
+
     private fun applyAudioRoute() {
         val am = audioManager ?: return
 
         runCatching {
             am.mode = AudioManager.MODE_IN_COMMUNICATION
 
-            // 1. Wired headset always wins
-            if (hasWiredHeadset()) {
+            // Always refresh device presence so flows are accurate
+            refreshDeviceSignals()
+
+            // 1. Wired always wins (headset/jack/USB)
+            if (_isWiredActive.value) {
                 stopScoIfAny(am)
                 am.isSpeakerphoneOn = false
+
+                // If wired is active, BT should not be considered active for proximity
                 _isBluetoothActive.value = false
                 return
             }
 
-            // 2. Bluetooth auto-route (NO TOGGLE)
-            if (hasBluetoothScoDevice()) {
+            // 2. If user explicitly wants speaker, speaker wins over BT
+            if (routePreference == RoutePreference.SPEAKER || desiredRoute == AudioRoute.SPEAKER) {
+                stopScoIfAny(am)
+                am.isSpeakerphoneOn = true
+                _isBluetoothActive.value = false
+                return
+            }
+
+            // 3. Otherwise AUTO: if BT device exists, try route to BT SCO
+            if (_isBluetoothAvailable.value) {
                 am.isSpeakerphoneOn = false
 
-                // If not connected, try to start
+                // Try to start SCO if not connected yet
                 if (!am.isBluetoothScoOn && lastScoState != AudioManager.SCO_AUDIO_STATE_CONNECTED) {
                     am.startBluetoothSco()
                 }
 
                 // The "active" indicator is more accurate based on the connected SCO (via receiver),
                 // but provided a "best effort" fallback:
-                _isBluetoothActive.value = am.isBluetoothScoOn || lastScoState == AudioManager.SCO_AUDIO_STATE_CONNECTED
-                return
-            }
+                _isBluetoothActive.value = (lastScoState == AudioManager.SCO_AUDIO_STATE_CONNECTED) || am.isBluetoothScoOn
 
-
-            // 3. Speaker only if user explicitly enabled it
-            if (desiredRoute == AudioRoute.SPEAKER) {
-                stopScoIfAny(am)
-                am.isSpeakerphoneOn = true
-                _isBluetoothActive.value = false
                 return
             }
 
@@ -919,12 +959,6 @@ class WebRtcManager {
         reconnectJob = null
         reconnectStartElapsedMs = null
 
-        listener?.onState(CallState.Connected(via))
-    }
-
-    private fun emitConnected(via: String) {
-        connectTimeoutJob?.cancel()
-        connectTimeoutJob = null
         listener?.onState(CallState.Connected(via))
     }
 }
