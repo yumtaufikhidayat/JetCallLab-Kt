@@ -443,11 +443,7 @@ This prevents:
 - [x] Reconnect state & recovery indicator
 - [x] Proximity sensor integration (earpiece-only screen off)
 - [x] Call progress tones (connecting / reconnecting) using SoundPool
-- [ ] Explicit ICE restart support
-- [ ] PeerConnection rebuild on unrecoverable failure
 - [ ] Incoming call notification
-- [ ] Call quality / ICE metrics dashboard
-- [ ] Secure signaling rules
 
 ---
 
