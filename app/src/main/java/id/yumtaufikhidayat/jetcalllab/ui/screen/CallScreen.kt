@@ -25,7 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import id.yumtaufikhidayat.jetcalllab.formatHms
+import id.yumtaufikhidayat.jetcalllab.ext.formatHms
 import id.yumtaufikhidayat.jetcalllab.state.CallState
 import id.yumtaufikhidayat.jetcalllab.ui.viewmodel.CallViewModel
 

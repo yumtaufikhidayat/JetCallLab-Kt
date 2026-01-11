@@ -5,6 +5,8 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 - Signaling flow (Offer / Answer / ICE)
 - Android lifecycle & background execution
 - Audio routing (speaker, wired, Bluetooth SCO)
+- Call progress feedback (connecting / reconnecting tones)
+- In-call UX behavior (proximity screen off)
 - Network instability handling & recovery
 - Clean separation between UI, state, service, and call engine
 > ⚠️ This project is not meant to be production-ready. It is intentionally built as a **lab / playground** to understand how apps like WhatsApp, Telegram, Zoom, or Google Meet work under the hood, especially under **imperfect network conditions**.
@@ -22,12 +24,14 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 7. [Firebase / Signaling Setup](#firebase--signaling-setup)
 8. [How to Run](#how-to-run)
 9. [Audio & Call Controls](#audio--call-controls)
-10. [Reconnect & Network Recovery](#reconnect--network-recovery)
-11. [Lifecycle & Resource Management](#lifecycle--resource-management)
-12. [ICE / STUN / TURN Notes](#ice--stun--turn-notes)
-13. [Known Limitations](#known-limitations)
-14. [Roadmap](#roadmap)
-15. [License](#license)
+10. [Call Tones](#call-tones)
+11. [Proximity & In-Call Screen Behavior](#proximity--in-call-screen-behavior)
+12. [Reconnect & Network Recovery](#reconnect--network-recovery)
+13. [Lifecycle & Resource Management](#lifecycle--resource-management)
+14. [ICE / STUN / TURN Notes](#ice--stun--turn-notes)
+15. [Known Limitations](#known-limitations)
+16. [Roadmap](#roadmap)
+17. [License](#license)
 
 ---
 
@@ -41,18 +45,27 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 - ✅ **Speaker On / Off** toggle
 - ✅ Auto audio routing
      - Wired headset has highest priority
-     - Bluetooth SCO auto-connect when earbuds/headset connected
-     - Speaker enabled only via user toggle
+     - Bluetooth SCO auto-connect when a compatible device is detected
+     - Speaker enabled only via user toggle (explicit intent)
      - Routing is re-evaluated when devices change
-- ✅ Bluetooth active indicator
-    - Derived from AudioManager + SCO state callbacks
-    - Reflects actual audio route, not a UI toggle
-- ✅ Network reconnect awareness
-    - Detects ICE DISCONNECTED / FAILED
-    - Emits Reconnecting state with attempt count & elapsed seconds
-    - Automatically recovers call when ICE reconnects
+- ✅ Bluetooth active indicator (more realistic than a UI toggle)
+    - `isBluetoothAvailable` = device exists / detected
+    - `isBluetoothActive` = SCO is actually connected
+- ✅ Call Tones
+    - Audio ringtone is running well while waiting answer (connecting)
+    - Plays a looping tone while **WaitingAnswer / ExchangingIce**
+    - Plays a different looping tone while **Reconnecting**
+    - Stops automatically on **Connected / End / Fail**
+- ✅ Proximity screen-off behavior (in-call UX)
+    - Uses proximity sensor + `PROXIMITY_SCREEN_OFF_WAKE_LOCK`
+    - Enabled only for **in-call earpiece mode**
+    - Automatically releases on speaker/Bluetooth/wired headset
+- ✅ Network reconnect awareness (best effort)
+    - Detects `ICE DISCONNECTED / FAILED`
+    - Emits `Reconnecting state with attempt count & elapsed seconds`
+    - Returns to `Connected` when ICE recovers
 - ✅ Safe cleanup
-    - Prevents memory leaks, audio lockups, and zombie calls
+    - Prevents memory leaks, listener leaks, audio lockups, and zombie calls
 
 ---
 
@@ -99,26 +112,32 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 app/
 └── src/main/java/id/yumtaufikhidayat/jetcalllab/
 ├── enum/
-│   └── AudioRoute.kt             # EARPIECE / SPEAKER (Bluetooth auto-detected)
+│   ├── AudioRoute.kt              # EARPIECE / SPEAKER (Bluetooth auto-detected)
+│   ├── RoutePreference.kt         # Routing intention: AUTO vs SPEAKER (explicit user intent)
+│   └── ToneType.kt                # CONNECTING / RECONNECTING tone types
+│
+├── ext/
+│   └── LongExt.kt                 # Time formatting helpers (e.g., elapsedSeconds -> HH:mm:ss)
 │
 ├── service/
-│   └── CallService.kt            # Foreground Service: owns call lifecycle, timers, audio & reconnect handling
+│   └── CallService.kt             # Foreground Service: call lifecycle, timer, tones, proximity coordination
 │
 ├── state/
-│   └── CallState.kt              # Call state machine (Idle, Preparing, ConnectedFinal, Reconnecting, Connected, Failed)
+│   └── CallState.kt               # Call state machine (Idle, Preparing, ConnectedFinal, Reconnecting, etc.)
 │
 ├── ui/
 │   ├── screen/
-│   │   └── CallScreen.kt          # Compose UI (Call/Answer/End/Mute/Speaker/Reconnect status)
+│   │   └── CallScreen.kt          # Compose UI (dumb UI): Call/Answer/End/Mute/Speaker + state rendering
 │   └── theme/                     # Compose theme (colors, typography, shapes)
 │
 ├── viewmodel/
-│   └── CallViewModel.kt           # Bridges Service → UI via StateFlow
+│   └── CallViewModel.kt           # Bridges Service → UI using StateFlow (keeps UI simple)
 │
 ├── utils/
+│   ├── CallTonePlayer.kt          # SoundPool-based tones (connecting/reconnecting)  
 │   ├── FirestoreSignaling.kt      # Signaling via Firestore (Offer/Answer/ICE)
-│   ├── WebRtcManager.kt           # WebRTC core + ICE handling + audio routing + reconnect logic
-│   └── LongExt.kt                 # Time formatting helpers
+│   ├── ProximityController.kt     # Proximity sensor screen-off management (earpiece-only)
+│   └── WebRtcManager.kt           # WebRTC core + ICE handling + audio routing + reconnect logic
 │
 └── MainActivity.kt                # Android entry point; hosts Compose content
 ```
@@ -130,15 +149,19 @@ app/
 ### `CallService`
 - Runs the call session inside a **Foreground Service**
 - Owns:
-  - Call lifecycle
+  - Call lifecycle & state propagation
   - Reconnect state propagation
-  - Timer & audio state
+  - Timer (elapsed call time)
+  - Tone playback coordination (SoundPool)
+  - Proximity control coordination (earpiece-only)
 - Exposes:
     - `state: StateFlow<CallState>`
     - `elapsedSeconds: StateFlow<Long>`
     - `isMuted: StateFlow<Boolean>`
     - `isSpeakerOn: StateFlow<Boolean>`
     - `isBluetoothActive: StateFlow<Boolean>`
+    - `isBluetoothAvailable: StateFlow<Boolean>`
+    - `isWiredActive: StateFlow<Boolean>`
 
 ### `WebRtcManager`
 - WebRTC engine abstraction
@@ -150,12 +173,18 @@ app/
   - ICE state monitoring & reconnect detection
 - Reconnect behavior:
   - Tracks whether call was ever connected
-  - Emits Reconnecting on ICE failure
-  - Emits Connected when ICE recovers
+  - Emits `Reconnecting` on ICE failure
+  - Emits `Connected` when ICE recovers
 - Audio routing:
-  - Wired → Bluetooth SCO → Speaker → Earpiece
+  - Wired → Speaker (if explicitly chosen) → Bluetooth SCO (AUTO) → Earpiece fallback
   - Bluetooth is auto-routed, not toggled
 
+### `ProximityController`
+- Implements “phone-call like” UX by turning the screen off when the device is close to the user’s face
+- Uses:
+  - Proximity sensor `(Sensor.TYPE_PROXIMITY)`
+  - `PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK` (deprecated but still widely used in calling apps)
+- Enabled only when it makes sense (earpiece mode), and automatically disabled on other routes
 
 ### `FirestoreSignaling`
 - Signaling channel implementation using **Firebase Firestore**
@@ -174,7 +203,7 @@ app/
 - Call / Answer / End
 - Mute & Speaker toggle
 - Timer & call state rendering
-- Bluetooth on/off indicator
+- Bluetooth + wired indicator (from flows)
 
 ---
 
@@ -185,6 +214,8 @@ app/
 - **Jetpack Compose**
 - **Coroutines & StateFlow**
 - **Android Foreground Service**
+- **SensorManager**
+- **PowerManager**
 
 ### WebRTC
 - `org.webrtc` (Google SDK)
@@ -199,7 +230,9 @@ app/
 
 ### Android Audio
 - `AudioManager`
+- `SoundPool`
 - `JavaAudioDeviceModule`
+- `SensorManager + PowerManager` (Proximity)
 - Hardware Echo Cancellation & Noise Suppression (when available)
 - Bluetooth SCO routing (device dependent)
 
@@ -279,6 +312,58 @@ rooms/{roomId}/calleeCandidates/{autoId}
 
 ---
 
+## Call Tones
+
+JetCallLab includes call progress tones so the user gets audio feedback during non-connected phases.
+
+### Behavior
+- Plays CONNECTING tone while:
+  - `WaitingAnswer`
+  - `ExchangingIce`
+- Plays RECONNECTING tone while:
+  - `Reconnecting`
+- Stops automatically when:
+  - `Connected / ConnectedFinal`
+  - `Failed / FailedFinal`
+  - `Ending / Idle`
+
+> Audio ringtone is running well while waiting answer (connecting), and stops when the call becomes connected.
+
+---
+
+## Proximity & In-Call Screen Behavior
+JetCallLab includes a ProximityController to mimic real calling apps behavior: turn off the screen when the phone is near the user’s face (to prevent accidental touches).
+
+### Core idea
+- Register the proximity sensor
+- When NEAR → acquire PROXIMITY_SCREEN_OFF_WAKE_LOCK
+- When FAR → release the WakeLock
+
+### When proximity is enabled
+Proximity is enabled only for in-call earpiece mode, meaning:
+
+✅ **Enabled when:**
+- `inCall == true`
+- speaker is **off**
+- Bluetooth (SCO) is **not active**
+- wired headset is **not active**
+
+❌ **Disabled when:**
+- Speaker is on (hands-free mode)
+- Bluetooth SCO is active (earbuds/headset)
+- Wired headset/jack/USB headset is present
+
+This prevents “weird UX” such as screen turning off while the user is on speaker or using earbuds.
+
+**Why `PROXIMITY_SCREEN_OFF_WAKE_LOCK?`**
+Android marks it deprecated, but in practice it’s still the closest behavior to what calling apps do—as long as the device supports proximity wake locks.
+
+If a device does not support proximity:
+- the controller becomes a no-op
+- calls still work normally
+
+---
+
 ## Reconnect & Network Recovery
 
 JetCallLab does not guarantee seamless reconnection, but it demonstrates how apps detect and react to network instability.
@@ -305,6 +390,8 @@ JetCallLab does not guarantee seamless reconnection, but it demonstrates how app
 ## Lifecycle & Resource Management
 
 On `endCall()`:
+- Proximity listener is stopped
+- WakeLock is released (if held)
 - Cancel coroutines & timeouts
 - Remove Firestore listeners
 - Close & dispose:
@@ -354,7 +441,8 @@ This prevents:
 
 - [x] Bluetooth SCO auto-routing
 - [x] Reconnect state & recovery indicator
-- [x] Proximity sensor integration with WakeLock for in-call screen management
+- [x] Proximity sensor integration (earpiece-only screen off)
+- [x] Call progress tones (connecting / reconnecting) using SoundPool
 - [ ] Explicit ICE restart support
 - [ ] PeerConnection rebuild on unrecoverable failure
 - [ ] Incoming call notification
