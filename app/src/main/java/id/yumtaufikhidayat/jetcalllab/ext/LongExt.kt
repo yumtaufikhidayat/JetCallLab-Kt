@@ -1,4 +1,4 @@
-package id.yumtaufikhidayat.jetcalllab
+package id.yumtaufikhidayat.jetcalllab.ext
 
 fun Long.formatHms(): String {
     val hour = this / 3600

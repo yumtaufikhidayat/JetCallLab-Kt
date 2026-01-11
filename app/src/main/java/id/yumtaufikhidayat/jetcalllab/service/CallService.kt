@@ -4,8 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -13,6 +11,7 @@ import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import id.yumtaufikhidayat.jetcalllab.R
 import id.yumtaufikhidayat.jetcalllab.state.CallState
+import id.yumtaufikhidayat.jetcalllab.utils.CallTonePlayer
 import id.yumtaufikhidayat.jetcalllab.utils.ProximityController
 import id.yumtaufikhidayat.jetcalllab.utils.WebRtcManager
 import kotlinx.coroutines.CoroutineScope
@@ -46,11 +45,18 @@ class CallService : Service(), WebRtcManager.Listener {
     private val _isBluetoothActive = MutableStateFlow(false)
     val isBluetoothActive: StateFlow<Boolean> = _isBluetoothActive.asStateFlow()
 
+    private val _isBluetoothAvailable = MutableStateFlow(false)
+    val isBluetoothAvailable: StateFlow<Boolean> = _isBluetoothAvailable.asStateFlow()
+
+    private val _isWiredActive = MutableStateFlow(false)
+    val isWiredActive: StateFlow<Boolean> = _isWiredActive.asStateFlow()
+
     private var callStartElapsedMs: Long? = null
     private var timerJob: Job? = null
-    private var btJob: Job? = null
+    private var deviceJob: Job? = null
 
-    private lateinit var proximity: ProximityController
+    private var proximity: ProximityController? = null
+    private var tonePlayer: CallTonePlayer? = null
 
     inner class LocalBinder : Binder() {
         fun service(): CallService = this@CallService
@@ -64,23 +70,43 @@ class CallService : Service(), WebRtcManager.Listener {
 
         webRtc.setListener(this)
 
-        proximity = ProximityController(this)
-        proximity.start()
+        tonePlayer = CallTonePlayer(this)
 
-        // Observe Bluetooth state from WebRtcManager
-        btJob = serviceScope.launch {
-            webRtc.isBluetoothActive.collect { active ->
-                _isBluetoothActive.value = active
-                updateProximityState()
+        proximity = ProximityController(this)
+        proximity?.start()
+
+        // Observe device state from WebRtcManager
+        deviceJob = serviceScope.launch {
+            launch {
+                webRtc.isBluetoothActive.collect { active ->
+                    _isBluetoothActive.value = active
+                    updateProximityState()
+                }
+            }
+
+            launch {
+                webRtc.isBluetoothAvailable.collect { available ->
+                    _isBluetoothAvailable.value = available
+                    updateProximityState()
+                }
+            }
+
+            launch {
+                webRtc.isWiredActive.collect { wired ->
+                    _isWiredActive.value = wired
+                    updateProximityState()
+                }
             }
         }
     }
 
     override fun onDestroy() {
-        btJob?.cancel()
-        btJob = null
+        deviceJob?.cancel()
+        deviceJob = null
 
-        proximity.stop()
+        runCatching { tonePlayer?.release() }
+
+        proximity?.stop()
 
         webRtc.setListener(null)
         webRtc.endCall()
@@ -107,6 +133,9 @@ class CallService : Service(), WebRtcManager.Listener {
     }
 
     fun endCall() {
+        // Stop tone ASAP
+        runCatching { tonePlayer?.stop() }
+
         _isMuted.value = false
         _isSpeakerOn.value = false
 
@@ -121,35 +150,40 @@ class CallService : Service(), WebRtcManager.Listener {
     
     // WebRtcManager.Listener
     override fun onState(state: CallState) {
-        _state.value = state
-        updateProximityState()
+        serviceScope.launch {
+            _state.value = state
+            updateProximityState()
 
-        when (state) {
-            is CallState.ConnectedFinal -> {
-                updateForegroundNotification("Connected (${state.via})")
-                startTimerIfNeeded()
+            // tone follows state
+            tonePlayer?.onCallState(state)
+
+            when (state) {
+                is CallState.ConnectedFinal -> {
+                    updateForegroundNotification("Connected (${state.via})")
+                    startTimerIfNeeded()
+                }
+
+                is CallState.Connected -> {
+                    updateForegroundNotification("Connected (${state.via})")
+                }
+
+                is CallState.Reconnecting -> {
+                    updateForegroundNotification(
+                        "Reconnecting… attempt ${state.attempt} (${state.elapsedSeconds}s)"
+                    )
+                }
+
+                is CallState.Idle,
+                is CallState.Ending,
+                is CallState.FailedFinal -> {
+                    resetAudioUiState()
+                    stopTimer(reset = true)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+
+                else -> Unit
             }
-
-            is CallState.Connected -> {
-                updateForegroundNotification("Connected (${state.via})")
-            }
-
-            is CallState.Reconnecting -> {
-                updateForegroundNotification(
-                    "Reconnecting… attempt ${state.attempt} (${state.elapsedSeconds}s)"
-                )
-            }
-
-            is CallState.Idle,
-            is CallState.Ending,
-            is CallState.FailedFinal -> {
-                resetAudioUiState()
-                stopTimer(reset = true)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
-
-            else -> Unit
         }
     }
 
@@ -183,24 +217,15 @@ class CallService : Service(), WebRtcManager.Listener {
             else -> false
         }
 
-        proximity.updateCallConditions(
+        val bluetoothEffective = _isBluetoothAvailable.value || _isBluetoothActive.value
+
+        proximity?.updateCallConditions(
             inCall = inCall,
             speakerOn = _isSpeakerOn.value,
-            bluetoothActive = _isBluetoothActive.value,
-            wiredHeadset = hasWiredHeadset()
+            bluetoothActive = bluetoothEffective,
+            wiredHeadset = _isWiredActive.value
         )
     }
-
-    private fun hasWiredHeadset(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
-        val am = getSystemService(AUDIO_SERVICE) as AudioManager
-        return am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
-            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET
-        }
-    }
-
     
     // Timer
     private fun startTimerIfNeeded() {
