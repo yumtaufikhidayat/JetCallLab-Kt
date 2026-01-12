@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -25,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
 import id.yumtaufikhidayat.jetcalllab.ext.formatHms
 import id.yumtaufikhidayat.jetcalllab.state.CallState
 import id.yumtaufikhidayat.jetcalllab.ui.viewmodel.CallViewModel
@@ -38,20 +38,31 @@ fun CallScreen(
     val state by viewModel.state.collectAsState()
     val micPermission = rememberPermissionState(android.Manifest.permission.RECORD_AUDIO)
     var roomId by rememberSaveable { mutableStateOf("room_test_") }
-    val canStartSession = remember(state, roomId) {
-        roomId.isNotBlank() && (
-                state is CallState.Idle
-                        // Remove both condition below if want to end call instead of retry call
-//                        || state is CallState.Failed
-//                        || state is CallState.FailedFinal
-                )
-    }
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
     val isBluetoothActive by viewModel.isBluetoothActive.collectAsState()
+    val isBluetoothAvailable by viewModel.isBluetoothAvailable.collectAsState()
+    val isWiredActive by viewModel.isWiredActive.collectAsState()
+    val tempo by viewModel.tempo.collectAsState()
 
-    val inCall = state !is CallState.Idle
+    val isInSession = when (state) {
+        is CallState.Preparing,
+        is CallState.CreatingOffer,
+        is CallState.WaitingAnswer,
+        is CallState.WaitingOffer,
+        is CallState.CreatingAnswer,
+        is CallState.ExchangingIce,
+        is CallState.ConnectedFinal,
+        is CallState.Connected,
+        is CallState.Reconnecting -> true
+        else -> false // Failed/FailedFinal/Ending/Idle
+    }
+    val isRoomInputEnabled = !isInSession
+    val callAnswerEnabled = !isInSession && roomId.isNotBlank()
+
+    val showConnectingTempo = (state is CallState.WaitingAnswer || state is CallState.ExchangingIce) && tempo?.phase == TempoPhase.CONNECTING
+    val showReconnectTempo = (state is CallState.Reconnecting) && tempo?.phase == TempoPhase.RECONNECTING
 
     Column(
         modifier = modifier
@@ -66,6 +77,7 @@ fun CallScreen(
             value = roomId,
             onValueChange = { roomId = it },
             label = { Text("Room ID") },
+            enabled = isRoomInputEnabled,
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -85,7 +97,7 @@ fun CallScreen(
                         micPermission.launchPermissionRequest()
                     }
                 },
-                enabled = canStartSession
+                enabled = callAnswerEnabled
             ) {
                 Text(text = "Call")
             }
@@ -93,13 +105,13 @@ fun CallScreen(
             Button(
                 onClick = {
                     if (micPermission.status.isGranted) {
-                        viewModel.joinCallee( roomId.trim())
+                        viewModel.joinCallee(roomId.trim())
                     } else {
                         micPermission.launchPermissionRequest()
                     }
                 },
                 modifier = Modifier.weight(1f),
-                enabled = canStartSession
+                enabled = callAnswerEnabled
             ) {
                 Text("Answer")
             }
@@ -113,19 +125,19 @@ fun CallScreen(
             Button(
                 modifier = modifier.weight(1f),
                 onClick = viewModel::toggleMute,
-                enabled = inCall
+                enabled = isInSession
             ) { Text(if (isMuted) "Muted" else "Mute") }
 
             Button(
                 modifier = modifier.weight(1f),
                 onClick = viewModel::endCall,
-                enabled = state !is CallState.Idle,
+                enabled = isInSession,
             ) { Text("End") }
 
             Button(
                 modifier = modifier.weight(1f),
                 onClick = viewModel::toggleSpeaker,
-                enabled = inCall
+                enabled = isInSession
             ) { Text(if (isSpeakerOn) "Speaker On" else "Speaker Off") }
         }
 
@@ -139,23 +151,34 @@ fun CallScreen(
 
         Text(text = "Bluetooth: ${if (isBluetoothActive) "on" else "off"}")
 
+        if (showConnectingTempo) {
+            Text("Waiting answer… ${tempo?.remainingSeconds}s left")
+        }
+
+        if (showReconnectTempo) {
+            Text("Reconnecting… ${tempo?.remainingSeconds}s left")
+        }
+
         when (val s = state) {
-            is CallState.Reconnecting -> {
-                Text("Reconnecting… (${s.elapsedSeconds}s)")
-                Text("Attempt: ${s.attempt}")
-            }
             is CallState.Connected -> {
                 Text("Connected")
                 Text("Via: ${s.via}")
             }
+
             is CallState.ConnectedFinal -> {
                 Text("Connected")
                 Text("Via: ${s.via}")
             }
+
             is CallState.FailedFinal -> {
                 Text("Failed: ${s.reason}")
             }
+
             else -> Unit
         }
+
+        Text(text = "Bluetooth: ${if (isBluetoothAvailable) "available" else "unavailable" }")
+
+        Text(text = "Wired headset: ${if (isWiredActive) "on" else "off"}")
     }
 }

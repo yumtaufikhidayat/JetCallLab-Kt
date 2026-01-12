@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import id.yumtaufikhidayat.jetcalllab.model.CallTempo
 import id.yumtaufikhidayat.jetcalllab.service.CallService
 import id.yumtaufikhidayat.jetcalllab.state.CallState
 import kotlinx.coroutines.Job
@@ -31,6 +32,15 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
     private val _isBluetoothActive = MutableStateFlow(false)
     val isBluetoothActive = _isBluetoothActive.asStateFlow()
+
+    private val _isBluetoothAvailable = MutableStateFlow(false)
+    val isBluetoothAvailable = _isBluetoothAvailable.asStateFlow()
+
+    private val _isWiredActive = MutableStateFlow(false)
+    val isWiredActive = _isWiredActive.asStateFlow()
+
+    private val _tempo = MutableStateFlow<CallTempo?>(null)
+    val tempo = _tempo.asStateFlow()
 
     private var callService: CallService? = null
     private var serviceBound = false
@@ -59,6 +69,8 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
             _state.value = CallState.Idle
             _elapsedSeconds.value = 0L
+            _tempo.value = null
+            resetUiFlagsToIdle()
         }
     }
 
@@ -78,25 +90,29 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
-            launch {
-                service.state.collect { state -> _state.value = state }
-            }
+            launch { service.state.collect { state ->
+                _state.value = state
 
-            launch {
-                service.elapsedSeconds.collect { time -> _elapsedSeconds.value = time }
-            }
-
-            launch {
-                service.isMuted.collect { mute -> _isMuted.value = mute }
-            }
-
-            launch {
-                service.isSpeakerOn.collect { on -> _isSpeakerOn.value = on }
-            }
-
-            launch {
-                service.isBluetoothActive.collect { active -> _isBluetoothActive.value = active }
-            }
+                when (state) {
+                    is CallState.FailedFinal,
+                    is CallState.Failed,
+                    is CallState.Ending,
+                    is CallState.Idle -> {
+                        // back to idle state
+                        _elapsedSeconds.value = 0L
+                        _tempo.value = null
+                        resetUiFlagsToIdle()
+                    }
+                    else -> Unit
+                }
+            } }
+            launch { service.elapsedSeconds.collect { time -> _elapsedSeconds.value = time } }
+            launch { service.isMuted.collect { mute -> _isMuted.value = mute } }
+            launch { service.isSpeakerOn.collect { on -> _isSpeakerOn.value = on } }
+            launch { service.isBluetoothActive.collect { active -> _isBluetoothActive.value = active } }
+            launch { service.isBluetoothAvailable.collect { available -> _isBluetoothAvailable.value = available } }
+            launch { service.isWiredActive.collect { wired -> _isWiredActive.value = wired } }
+            launch { service.tempo.collect { tempo -> _tempo.value = tempo } }
         }
     }
 
@@ -118,6 +134,12 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
     fun endCall() {
         callService?.endCall()
+    }
+
+    private fun resetUiFlagsToIdle() {
+        _isMuted.value = false
+        _isSpeakerOn.value = false
+        _isBluetoothActive.value = false
     }
 
     override fun onCleared() {

@@ -10,6 +10,8 @@ import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import id.yumtaufikhidayat.jetcalllab.R
+import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
+import id.yumtaufikhidayat.jetcalllab.model.CallTempo
 import id.yumtaufikhidayat.jetcalllab.state.CallState
 import id.yumtaufikhidayat.jetcalllab.utils.CallTonePlayer
 import id.yumtaufikhidayat.jetcalllab.utils.ProximityController
@@ -50,6 +52,14 @@ class CallService : Service(), WebRtcManager.Listener {
 
     private val _isWiredActive = MutableStateFlow(false)
     val isWiredActive: StateFlow<Boolean> = _isWiredActive.asStateFlow()
+
+    private val _tempo = MutableStateFlow<CallTempo?>(null)
+    val tempo: StateFlow<CallTempo?> = _tempo.asStateFlow()
+
+    private var autoHangupJob: Job? = null
+
+    @Volatile
+    private var isAutoTerminating = false
 
     private var callStartElapsedMs: Long? = null
     private var timerJob: Job? = null
@@ -101,6 +111,9 @@ class CallService : Service(), WebRtcManager.Listener {
     }
 
     override fun onDestroy() {
+        autoHangupJob?.cancel()
+        autoHangupJob = null
+
         deviceJob?.cancel()
         deviceJob = null
 
@@ -133,24 +146,37 @@ class CallService : Service(), WebRtcManager.Listener {
     }
 
     fun endCall() {
+        if (isAutoTerminating) return
+        isAutoTerminating = true
+
         // Stop tone ASAP
         runCatching { tonePlayer?.stop() }
+        _tempo.value = null
 
-        _isMuted.value = false
-        _isSpeakerOn.value = false
-
-        webRtc.setMuted(false)
-        webRtc.setSpeakerOn(false)
+        resetAudioUiState()
         webRtc.endCall()
-
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
+    override fun onTempo(
+        phase: TempoPhase,
+        elapsedSeconds: Long,
+        remainingSeconds: Long,
+        timeoutSeconds: Long
+    ) {
+        _tempo.value = CallTempo(
+            phase = phase,
+            elapsedSeconds = elapsedSeconds,
+            remainingSeconds = remainingSeconds,
+            timeoutSeconds = timeoutSeconds
+        )
+    }
     
     // WebRtcManager.Listener
     override fun onState(state: CallState) {
         serviceScope.launch {
+            // If it is auto terminating, ignore the additional states from the engine.
+            if (isAutoTerminating && state !is CallState.Ending && state !is CallState.Idle) return@launch
+
             _state.value = state
             updateProximityState()
 
@@ -173,11 +199,33 @@ class CallService : Service(), WebRtcManager.Listener {
                     )
                 }
 
-                is CallState.Idle,
-                is CallState.Ending,
                 is CallState.FailedFinal -> {
                     resetAudioUiState()
+                    // automatically end call + stop service
+                    scheduleAutoHangup(reasonForUser = state.reason)
+                }
+
+                is CallState.Failed -> {
+                    resetAudioUiState()
+                    scheduleAutoHangup(reasonForUser = state.reason)
+                }
+
+                is CallState.Ending -> {
+                    // Transitional state. Do NOT stop service here.
+                    resetAudioUiState()
                     stopTimer(reset = true)
+                    // optional: keep foreground until Idle for smoother UX
+                }
+
+                is CallState.Idle -> {
+                    resetAudioUiState()
+                    stopTimer(reset = true)
+
+                    _tempo.value = null
+                    isAutoTerminating = false
+                    autoHangupJob?.cancel()
+                    autoHangupJob = null
+
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -188,10 +236,13 @@ class CallService : Service(), WebRtcManager.Listener {
     }
 
     override fun onError(message: String) {
-        _state.value = CallState.Failed(message)
-        updateProximityState()
+        serviceScope.launch {
+            _state.value = CallState.Failed(message)
+            updateProximityState()
+            tonePlayer?.onCallState(CallState.Failed(message))
+            scheduleAutoHangup(reasonForUser = message)
+        }
     }
-
     
     // UI actions
     fun toggleMute() {
@@ -297,5 +348,28 @@ class CallService : Service(), WebRtcManager.Listener {
 
         getSystemService(NotificationManager::class.java)
             .notify(1001, notification)
+    }
+
+    private fun scheduleAutoHangup(
+        reasonForUser: String?,
+        delayMs: Long = 1200L // delay for user to read a reason
+    ) {
+        if (autoHangupJob != null) return
+        if (isAutoTerminating) return
+
+        autoHangupJob = serviceScope.launch {
+            // Stop tone ASAP (to handle "hangup")
+            runCatching { tonePlayer?.stop() }
+
+            _tempo.value = null
+
+            // Update notif for consistency
+            reasonForUser?.let { updateForegroundNotification(it) }
+            delay(delayMs)
+
+            // Prevent re-entrancy
+            isAutoTerminating = true
+            webRtc.endCall()
+        }
     }
 }

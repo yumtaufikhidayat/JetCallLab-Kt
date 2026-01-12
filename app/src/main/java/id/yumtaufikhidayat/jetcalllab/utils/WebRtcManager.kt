@@ -14,7 +14,9 @@ import android.os.SystemClock
 import android.util.Log
 import com.google.firebase.firestore.ListenerRegistration
 import id.yumtaufikhidayat.jetcalllab.enum.AudioRoute
+import id.yumtaufikhidayat.jetcalllab.enum.CallRole
 import id.yumtaufikhidayat.jetcalllab.enum.RoutePreference
+import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
 import id.yumtaufikhidayat.jetcalllab.state.CallState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
@@ -41,6 +44,7 @@ import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
+import java.util.concurrent.atomic.AtomicLong
 
 class WebRtcManager {
 
@@ -94,6 +98,19 @@ class WebRtcManager {
 
     @Volatile
     private var routePreference: RoutePreference = RoutePreference.AUTO
+
+    @Volatile private var callRole: CallRole? = null
+
+    private val sessionSeq = AtomicLong(0)
+
+    @Volatile
+    private var activeSessionId: Long = 0L
+
+    @Volatile
+    private var setupFinalized = false
+
+    @Volatile
+    private var terminated = false
 
     private var audioManager: AudioManager? = null
     private var audioFocusChangeListener: AudioManager.OnAudioFocusChangeListener? = null
@@ -216,6 +233,14 @@ class WebRtcManager {
     interface Listener {
         fun onState(state: CallState)
         fun onError(message: String)
+
+        // Tempo callback
+        fun onTempo(
+            phase: TempoPhase,
+            elapsedSeconds: Long,
+            remainingSeconds: Long,
+            timeoutSeconds: Long
+        ) = Unit
     }
 
     fun init(context: Context) {
@@ -301,8 +326,7 @@ class WebRtcManager {
     }
 
     private fun createPeerConnection(): PeerConnection? {
-        val factory = peerConnectionFactory
-        if (factory == null) {
+        val factory = peerConnectionFactory ?: run {
             listener?.onError("PeerConnectionFactory is null (did you call init?)")
             return null
         }
@@ -464,13 +488,9 @@ class WebRtcManager {
             }
 
             override fun onIceCandidatesRemoved(p0: Array<out IceCandidate?>?) {}
-
             override fun onAddStream(p0: MediaStream?) {}
-
             override fun onRemoveStream(p0: MediaStream?) {}
-
             override fun onDataChannel(p0: DataChannel?) {}
-
             override fun onRenegotiationNeeded() {}
         }
 
@@ -493,23 +513,28 @@ class WebRtcManager {
     }
 
     fun startCallAsCaller(context: Context, roomId: String) {
+        callRole = CallRole.CALLER
+
+        val sid = newSession()
+
         sessionActive = true
         ensureCallScope()
         resetSessionState()
         resetFinalOutcome()
 
-        startConnectTimeout() // Failed final indicator if unreachable/can't be connected
-
         listener?.onState(CallState.Preparing)
         init(context)
         createAudioTrack()
 
-        peerConnection = createPeerConnection() ?: return
+        peerConnection = createPeerConnection() ?: run {
+            emitFinalFailure("Failed to create PeerConnection")
+            return
+        }
         addLocalAudioTrackToPeerConnection()
 
         onLocalIceCandidate = { candidate ->
             callScope?.launch {
-                if (!guardActive()) return@launch
+                if (!isSessionValid(sid)) return@launch
                 signaling.addCallerCandidate(roomId, candidate)
             }
         }
@@ -520,16 +545,18 @@ class WebRtcManager {
             signaling.resetRoom(roomId)
             peerConnection?.createOffer(object : SdpObserver {
                 override fun onCreateSuccess(desc: SessionDescription) {
-                    if (!guardActive()) return
+                    if (!isSessionValid(sid)) return
 
                     peerConnection?.setLocalDescription(object : SdpObserver {
                         override fun onSetSuccess() {
-                            if (!guardActive()) return
+                            if (!isSessionValid(sid)) return
 
                             callScope?.launch {
+                                if (!isSessionValid(sid)) return@launch
                                 signaling.publishOffer(roomId, desc)
                             }
                             listener?.onState(CallState.WaitingAnswer)
+                            startConnectTimeout(sid, seconds = 30) // start timeout tick here
 
                             // listen answer
                             answerListener?.remove()
@@ -572,25 +599,34 @@ class WebRtcManager {
     }
 
     fun joinCallAsCallee(context: Context, roomId: String) {
+        callRole = CallRole.CALLEE
+        val sid = newSession()
+
         sessionActive = true
         ensureCallScope()
         resetSessionState()
         resetFinalOutcome()
 
-        startConnectTimeout()  // Failed final indicator if unreachable/can't be connected
-
         listener?.onState(CallState.Preparing)
         init(context)
         createAudioTrack()
 
-        peerConnection = createPeerConnection() ?: return
+        peerConnection = createPeerConnection() ?: run {
+            emitFinalFailure("Failed to create PeerConnection")
+            return
+        }
         addLocalAudioTrackToPeerConnection()
 
         onLocalIceCandidate = { c ->
-            callScope?.launch { signaling.addCalleeCandidate(roomId, c) }
+            callScope?.launch {
+                if (!isSessionValid(sid)) return@launch
+                signaling.addCalleeCandidate(roomId, c)
+            }
         }
 
         listener?.onState(CallState.WaitingOffer) // waiting offer actually
+
+        startConnectTimeout(sid = sid, seconds = 30)
 
         // listen offer
         offerListener?.remove()
@@ -601,10 +637,13 @@ class WebRtcManager {
                 override fun onSetSuccess() {
                     isRemoteSdpSet = true
 
+                    // start timeout tick here (call setup is actually started)
+                    startConnectTimeout(seconds = 30, sid = sid)
+
                     candListener?.remove()
-                    candListener = signaling.listenCallerCandidates(roomId) { c ->
-                        if (!guardActive()) return@listenCallerCandidates
-                        handleRemoteIce(c)
+                    candListener = signaling.listenCallerCandidates(roomId) { candidate ->
+                        if (!isSessionValid(sid)) return@listenCallerCandidates
+                        handleRemoteIce(candidate)
                     }
 
                     listener?.onState(CallState.CreatingAnswer)
@@ -666,38 +705,80 @@ class WebRtcManager {
     }
 
     private fun emitFinalSuccess(via: String) {
-        if (finalEmitted) return
-        finalEmitted = true
+        if (!sessionActive) return
+        if (setupFinalized) return
+
+        setupFinalized = true
         connectTimeoutJob?.cancel()
         connectTimeoutJob = null
+
         listener?.onState(CallState.ConnectedFinal(via))
     }
 
     private fun emitFinalFailure(reason: String) {
-        if (finalEmitted) return
-        finalEmitted = true
+        if (!sessionActive) return
+        if (terminated) return
+
+        terminated = true
+
         connectTimeoutJob?.cancel()
-        connectTimeoutJob = null
+        reconnectJob?.cancel()
+        reconnecting = false
+        reconnectStartElapsedMs = null
+
         listener?.onState(CallState.FailedFinal(reason))
     }
 
-    private fun startConnectTimeout(seconds: Long = 30) {
+    private fun startConnectTimeout(sid: Long, seconds: Long = 30) {
         connectTimeoutJob?.cancel()
+
+        val startMs = SystemClock.elapsedRealtime()
+        val timeoutMs = seconds * ONE_SECOND
+
         connectTimeoutJob = callScope?.launch {
-            delay(seconds * 1000)
-            if (!finalEmitted) {
-                emitFinalFailure("Timeout: no CONNECTED within ${seconds}s")
+            while (isActive) {
+                if (!isSessionValid(sid)) break
+                if (terminated) break
+
+                val elapsedMs = SystemClock.elapsedRealtime() - startMs
+                val elapsedSec = elapsedMs / ONE_SECOND
+                val remainingSec = ((timeoutMs - elapsedMs).coerceAtLeast(0L)) / ONE_SECOND
+
+                // Temp tick
+                listener?.onTempo(
+                    phase = TempoPhase.CONNECTING,
+                    elapsedSeconds = elapsedSec,
+                    remainingSeconds = remainingSec,
+                    timeoutSeconds = seconds
+                )
+
+                if (elapsedMs >= timeoutMs) {
+                    val message = when (callRole) {
+                        CallRole.CALLER -> "No response from callee"
+                        CallRole.CALLEE -> "No incoming call"
+                        else -> "Call setup timed out"
+                    }
+                    emitFinalFailure(message)
+                    break
+                }
+
+                delay(ONE_SECOND)
             }
         }
     }
 
     private fun resetFinalOutcome() {
-        finalEmitted = false
+        callRole = null
+        setupFinalized = false
+        terminated = false
+
         everConnected = false
         reconnectAttempt = 0
         reconnecting = false
+
         reconnectJob?.cancel(); reconnectJob = null
         reconnectStartElapsedMs = null
+
         connectTimeoutJob?.cancel(); connectTimeoutJob = null
     }
 
@@ -933,17 +1014,30 @@ class WebRtcManager {
 
         reconnectJob?.cancel()
         reconnectJob = callScope?.launch {
-            while (true) {
+            while (isActive) {
+                if (!guardActive()) break
+                if (terminated) break
+
                 val start = reconnectStartElapsedMs ?: break
-                val elapsed = (SystemClock.elapsedRealtime() - start) / 1000L
+                val elapsed = (SystemClock.elapsedRealtime() - start) / ONE_SECOND
+
                 listener?.onState(CallState.Reconnecting(reason, reconnectAttempt, elapsed))
+
+                // tempo tick for reconnect
+                val remaining = (timeoutSec - elapsed).coerceAtLeast(0L)
+                listener?.onTempo(
+                    phase = TempoPhase.RECONNECTING,
+                    elapsedSeconds = elapsed,
+                    remainingSeconds = remaining,
+                    timeoutSeconds = timeoutSec
+                )
 
                 if (elapsed >= timeoutSec) {
                     // For minimal: totally failed
-                    emitFinalFailure("Reconnect timeout (${timeoutSec}s): $reason")
+                    emitFinalFailure("Couldn't reconnect. Please check your connection. (${timeoutSec}s)")
                     break
                 }
-                delay(1000)
+                delay(ONE_SECOND)
             }
         }
     }
@@ -960,5 +1054,19 @@ class WebRtcManager {
         reconnectStartElapsedMs = null
 
         listener?.onState(CallState.Connected(via))
+    }
+
+    private fun newSession(): Long {
+        val id = sessionSeq.incrementAndGet()
+        activeSessionId = id
+        return id
+    }
+
+    private fun isSessionValid(id: Long): Boolean {
+        return sessionActive && activeSessionId == id
+    }
+
+    companion object {
+        private const val ONE_SECOND = 1000L
     }
 }
