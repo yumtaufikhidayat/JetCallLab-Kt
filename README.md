@@ -30,7 +30,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 13. [Lifecycle & Resource Management](#lifecycle--resource-management)
 14. [ICE / STUN / TURN Notes](#ice--stun--turn-notes)
 15. [Known Limitations](#known-limitations)
-16. [Roadmap](#roadmap)
+16. [Roadmap](#roadmaps)
 17. [License](#license)
 
 ---
@@ -441,7 +441,7 @@ This prevents:
 
 ---
 
-## Roadmap
+## Roadmaps
 
 - [x] Bluetooth SCO auto-routing
 - [x] Reconnect state & recovery indicator
