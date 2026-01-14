@@ -73,74 +73,40 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 > Minimal call playground UI (Caller / Callee) with timer, mute/speaker toggles, reconnect indicator, and Bluetooth status.
 
-<table border="0" cellspacing="0" cellpadding="0"
-  style="width:100%; border:none; border-collapse:collapse; table-layout:fixed;">
+<table border="0" cellspacing="0" cellpadding="0" style="border:none;border-collapse:collapse;width:100%;">
   <tr>
-    <th align="center" style="border:none; padding:12px; font-size:20px;">
-      Given Condition
-    </th>
-    <th align="center" style="border:none; padding:12px; font-size:20px;">
-      Caller
-    </th>
-    <th align="center" style="border:none; padding:12px; font-size:20px;">
-      Callee
-    </th>
+    <th align="left"  style="border:none;padding:12px;width:34%;">Given Condition</th>
+    <th align="center" style="border:none;padding:12px;width:33%;">Caller</th>
+    <th align="center" style="border:none;padding:12px;width:33%;">Callee</th>
   </tr>
 
   <tr>
-    <td valign="top" style="border:none; padding:12px; font-size:16px; line-height:1.5;">
+    <td valign="top" style="border:none;padding:12px;word-break:break-word;white-space:normal;">
       When the caller is in the WaitingAnswer state and the callee has not answered the call for
       amount of certain time, it will automatically disconnect and the UI display will return to the
       Idle position
     </td>
 
-    <td align="center" valign="top" style="border:none; padding:12px;">
-      <img src="docs/images/caller_waiting_answer.jpg"
-           alt="Caller - WaitingAnswer"
-           style="max-width:100%; width:320px; height:auto;" />
+    <td align="center" valign="top" style="border:none;padding:12px;">
+      <img src="docs/images/tab_preview.jpg" alt="Caller - WaitingAnswer" width="320" />
     </td>
 
-    <td align="center" valign="top" style="border:none; padding:12px;">
-      <img src="docs/images/callee_idle.jpg"
-           alt="Callee - Idle"
-           style="max-width:100%; width:320px; height:auto;" />
+    <td align="center" valign="top" style="border:none;padding:12px;">
+      <img src="docs/images/phone_preview.jpg" alt="Callee - Idle" width="320" />
     </td>
   </tr>
 
   <tr>
-    <td valign="top" style="border:none; padding:12px; font-size:16px; line-height:1.5;">
-      <!-- TODO: ganti sesuai kondisi baris ke-2 -->
+    <td valign="top" style="border:none;padding:12px;word-break:break-word;white-space:normal;">
       Given condition for scenario #2 goes here.
     </td>
 
-    <td align="center" valign="top" style="border:none; padding:12px;">
-      <img src="docs/images/caller_scenario_2.jpg"
-           alt="Caller - Scenario 2"
-           style="max-width:100%; width:320px; height:auto;" />
+    <td align="center" valign="top" style="border:none;padding:12px;">
+      <img src="docs/images/caller_scenario_2.jpg" alt="Caller - Scenario 2" width="320" />
     </td>
 
-    <td align="center" valign="top" style="border:none; padding:12px;">
-      <img src="docs/images/callee_scenario_2.jpg"
-           alt="Callee - Scenario 2"
-           style="max-width:100%; width:320px; height:auto;" />
-    </td>
-  </tr>
-
-  <tr>
-    <td valign="top" style="border:none; padding:12px; font-size:16px; line-height:1.5;">
-      
-    </td>
-
-    <td align="center" valign="top" style="border:none; padding:12px;">
-      <img src="docs/images/caller_scenario_3.jpg"
-           alt="Caller - Scenario 3"
-           style="max-width:100%; width:320px; height:auto;" />
-    </td>
-
-    <td align="center" valign="top" style="border:none; padding:12px;">
-      <img src="docs/images/callee_scenario_3.jpg"
-           alt="Callee - Scenario 3"
-           style="max-width:100%; width:320px; height:auto;" />
+    <td align="center" valign="top" style="border:none;padding:12px;">
+      <img src="docs/images/callee_scenario_2.jpg" alt="Callee - Scenario 2" width="320" />
     </td>
   </tr>
 </table>
