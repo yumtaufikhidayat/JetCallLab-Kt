@@ -108,40 +108,62 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 ---
 
 ## Project Structure
+---
 ```
 app/
 └── src/main/java/id/yumtaufikhidayat/jetcalllab/
 ├── enum/
-│   ├── AudioRoute.kt              # EARPIECE / SPEAKER (Bluetooth auto-detected)
-│   ├── RoutePreference.kt         # Routing intention: AUTO vs SPEAKER (explicit user intent)
-│   └── ToneType.kt                # CONNECTING / RECONNECTING tone types
+│   ├── AudioRoute.kt          # EARPIECE / SPEAKER (Bluetooth auto-detected)
+│   ├── CallRole.kt            # CALLER / CALLEE role in a call session
+│   ├── RoutePreference.kt     # Routing intention: AUTO vs SPEAKER (explicit user intent)
+│   ├── TempoPhase.kt          # CONNECTING / RECONNECTING phase for timer & UX
+│   └── ToneType.kt            # CONNECTING / RECONNECTING tone types
 │
 ├── ext/
-│   └── LongExt.kt                 # Time formatting helpers (e.g., elapsedSeconds -> HH:mm:ss)
+│   └── LongExt.kt             # Time formatting helpers (e.g. elapsedSeconds → HH:mm:ss)
+│
+├── model/
+│   └── CallTempo.kt           # Model representing call timer state (elapsed, remaining, timeout)
 │
 ├── service/
-│   └── CallService.kt             # Foreground Service: call lifecycle, timer, tones, proximity coordination
+│   └── CallService.kt         # Foreground Service:
+│                              # - Call lifecycle
+│                              # - Timer & tempo handling
+│                              # - Tone playback coordination
+│                              # - Proximity coordination
 │
 ├── state/
-│   └── CallState.kt               # Call state machine (Idle, Preparing, ConnectedFinal, Reconnecting, etc.)
+│   └── CallState.kt           # Call state machine
+│                              # (Idle, Preparing, CreatingOffer,
+│                              #  WaitingAnswer, ConnectedFinal,
+│                              #  Reconnecting, FailedFinal, Ending)
 │
 ├── ui/
-│   ├── screen/
-│   │   └── CallScreen.kt          # Compose UI (dumb UI): Call/Answer/End/Mute/Speaker + state rendering
-│   └── theme/                     # Compose theme (colors, typography, shapes)
+│   └── screen/
+│       └── CallScreen.kt      # Compose UI (dumb UI):
+│                              # Call / Answer / End / Mute / Speaker
+│                              # Pure state-driven rendering
+│
+├── theme/
+│   ├── Color.kt               # App color definitions
+│   ├── Theme.kt               # Compose theme setup
+│   └── Type.kt                # Typography definitions
 │
 ├── viewmodel/
-│   └── CallViewModel.kt           # Bridges Service → UI using StateFlow (keeps UI simple)
+│   └── CallViewModel.kt       # Bridges CallService → UI using StateFlow
+│                              # Keeps UI logic minimal
 │
 ├── utils/
-│   ├── CallTonePlayer.kt          # SoundPool-based tones (connecting/reconnecting)  
-│   ├── FirestoreSignaling.kt      # Signaling via Firestore (Offer/Answer/ICE)
-│   ├── ProximityController.kt     # Proximity sensor screen-off management (earpiece-only)
-│   └── WebRtcManager.kt           # WebRTC core + ICE handling + audio routing + reconnect logic
+│   ├── CallTonePlayer.kt      # SoundPool-based tones (connecting / reconnecting)
+│   ├── FirestoreSignaling.kt  # WebRTC signaling via Firestore
+│   │                          # (Offer / Answer / ICE exchange)
+│   ├── ProximityController.kt # Proximity sensor screen-off handling (earpiece-only)
+│   └── WebRtcManager.kt       # WebRTC core:
+│                              # PeerConnection, ICE handling,
+│                              # audio routing, reconnect logic
 │
-└── MainActivity.kt                # Android entry point; hosts Compose content
+└── MainActivity.kt            # Android entry point; hosts Compose content
 ```
-
 ---
 
 ## Core Components
