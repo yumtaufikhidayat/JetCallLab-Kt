@@ -73,12 +73,12 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 > Minimal call playground UI (Caller / Callee) with timer, mute/speaker toggles, reconnect indicator, and Bluetooth status.
 
-| Condition                | Caller                                                                 | Callee                                                                   |
-|:-------------------------|:-----------------------------------------------------------------------|:-------------------------------------------------------------------------|
-| Idle                     | ![Caller - Idle](docs/images/tab_preview_idle.jpg)                     | ![Callee - Idle](docs/images/phone_preview_idle.jpg)                     |
-| In call (Success)        | ![Caller - Success](docs/images/tab_call_connected.jpg)                | ![Callee - Success](docs/images/phone_call_connected.jpg)                |
-| In call (Waiting Answer) | ![Caller - Waiting Answer](docs/images/tab_preview_waiting_answer.jpg) | ![Callee - Waiting Answer](docs/images/phone_preview_waiting_answer.jpg) |
-| Reconnecting             | ![Caller - Reconnecting](docs/images/tab_call_reconnecting.jpg)        | ![Callee - Reconnecting](docs/images/phone_call_reconnecting.jpg)        |
+| Condition                | Caller                                                         | Callee                                                           |
+|:-------------------------|:---------------------------------------------------------------|:-----------------------------------------------------------------|
+| Idle                     | ![Caller - Idle](docs/images/tab_idle.jpg)                     | ![Callee - Idle](docs/images/phone_idle.jpg)                     |
+| In call (Success)        | ![Caller - Success](docs/images/tab_connected.jpg)             | ![Callee - Success](docs/images/phone_connected.jpg)             |
+| In call (Waiting Answer) | ![Caller - Waiting Answer](docs/images/tab_waiting_answer.jpg) | ![Callee - Waiting Answer](docs/images/phone_waiting_answer.jpg) |
+| Reconnecting             | ![Caller - Reconnecting](docs/images/tab_reconnecting.jpg)     | ![Callee - Reconnecting](docs/images/phone_reconnecting.jpg)     |
 
 ### What you can do
 - Start as **Caller** or **Callee** using the same `roomId`
