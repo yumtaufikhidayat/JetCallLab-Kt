@@ -43,7 +43,7 @@ android {
 }
 
 dependencies {
-    implementation(fileTree("libs") { include("*.aar") })
+//    implementation(fileTree("libs") { include("*.aar") })
 
     // Core
     implementation(libs.kotlinx.coroutines.play.services)
@@ -76,5 +76,8 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
 
     // AAR
-    implementation(files("libs/libwebrtc-M124.aar"))
+//    implementation(files("libs/libwebrtc-M124.aar"))
+
+    // WebRTC
+    implementation("io.github.webrtc-sdk:android:137.7151.05")
 }
