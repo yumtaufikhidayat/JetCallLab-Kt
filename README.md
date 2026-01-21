@@ -17,7 +17,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 1. [Features](#features)
 2. [UI Preview](#ui-preview)
-3. [Project Structure](#project-structure)
+3. [Project Structure](#-project-structure)
 4. [Core Components](#core-components)
 5. [Tech Stack & Libraries](#tech-stack--libraries)
 6. [How It Works (High Level)](#how-it-works-high-level)
@@ -73,13 +73,13 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 > Minimal call playground UI (Caller / Callee) with timer, mute/speaker toggles, reconnect indicator, and Bluetooth status.
 
-| Condition                                        | Caller                                                         | Callee                                                           |
-|:-------------------------------------------------|:---------------------------------------------------------------|:-----------------------------------------------------------------|
-| Idle                                             | ![Caller - Idle](docs/images/tab_idle.jpg)                     | ![Callee - Idle](docs/images/phone_idle.jpg)                     |
-| In call (Success)                                | ![Caller - Success](docs/images/tab_connected.jpg)             | ![Callee - Success](docs/images/phone_connected.jpg)             |
-| In call (Waiting Answer)                         | ![Caller - Waiting Answer](docs/images/tab_waiting_answer.jpg) | ![Callee - Waiting Answer](docs/images/phone_waiting_answer.jpg) |
-| Reconnecting                                     | ![Caller - Reconnecting](docs/images/tab_reconnecting.jpg)     | ![Callee - Reconnecting](docs/images/phone_reconnecting.jpg)     |
-| Bluetooth Status (auto detected in idle/in call) | ![Caller - Reconnecting](docs/images/tab_bluetooth.gif)        | ![Callee - Reconnecting](docs/images/phone_bluetooth.gif)        |
+| Condition                                                         | Caller                                                         | Callee                                                           |
+|:------------------------------------------------------------------|:---------------------------------------------------------------|:-----------------------------------------------------------------|
+| Idle                                                              | ![Caller - Idle](docs/images/tab_idle.jpg)                     | ![Callee - Idle](docs/images/phone_idle.jpg)                     |
+| In call (Success)                                                 | ![Caller - Success](docs/images/tab_connected.jpg)             | ![Callee - Success](docs/images/phone_connected.jpg)             |
+| In call (Waiting Answer/Exchanging ICE)                           | ![Caller - Waiting Answer](docs/images/tab_waiting_answer.jpg) | ![Callee - Waiting Answer](docs/images/phone_waiting_answer.jpg) |
+| Reconnecting                                                      | ![Caller - Reconnecting](docs/images/tab_reconnecting.jpg)     | ![Callee - Reconnecting](docs/images/phone_reconnecting.jpg)     |
+| Bluetooth Status (auto detected on idle state/on connected state) | ![Caller - Reconnecting](docs/images/tab_bluetooth.gif)        | ![Callee - Reconnecting](docs/images/phone_bluetooth.gif)        |
 
 ### What you can do
 - Start as **Caller** or **Callee** using the same `roomId`
