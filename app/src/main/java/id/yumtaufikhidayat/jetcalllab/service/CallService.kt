@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import id.yumtaufikhidayat.jetcalllab.R
+import id.yumtaufikhidayat.jetcalllab.enum.CallRole
 import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
 import id.yumtaufikhidayat.jetcalllab.model.CallTempo
 import id.yumtaufikhidayat.jetcalllab.state.CallState
@@ -55,6 +56,9 @@ class CallService : Service(), WebRtcManager.Listener {
 
     private val _tempo = MutableStateFlow<CallTempo?>(null)
     val tempo: StateFlow<CallTempo?> = _tempo.asStateFlow()
+
+    private val _role = MutableStateFlow<CallRole?>(null)
+    val role: StateFlow<CallRole?> = _role.asStateFlow()
 
     private var autoHangupJob: Job? = null
 
@@ -133,6 +137,7 @@ class CallService : Service(), WebRtcManager.Listener {
 
     // Call entry points
     fun startCaller(roomId: String) {
+        _role.value = CallRole.CALLER
         startAsForegroundIfNeeded()
         webRtc.setSpeakerOn(_isSpeakerOn.value)
         webRtc.setMuted(_isMuted.value)
@@ -140,6 +145,7 @@ class CallService : Service(), WebRtcManager.Listener {
     }
 
     fun joinCallee(roomId: String) {
+        _role.value = CallRole.CALLEE
         startAsForegroundIfNeeded()
         webRtc.setSpeakerOn(_isSpeakerOn.value)
         webRtc.setMuted(_isMuted.value)
@@ -226,6 +232,7 @@ class CallService : Service(), WebRtcManager.Listener {
                     isAutoTerminating = false
                     autoHangupJob?.cancel()
                     autoHangupJob = null
+                    _role.value = null
 
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
