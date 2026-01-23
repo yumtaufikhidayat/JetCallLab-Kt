@@ -244,6 +244,9 @@ class WebRtcManager {
     }
 
     fun init(context: Context) {
+        // Always ensure audio monitoring is up
+        initAudioMonitoring(context)
+
         if (peerConnectionFactory != null) return
 
         appContext = context.applicationContext
@@ -878,7 +881,7 @@ class WebRtcManager {
                     AudioManager.SCO_AUDIO_STATE_DISCONNECTED -> {
                         _isBluetoothActive.value = false
                         // If: BT device still exist, try to start again at once (auto-recover)
-                        if (hasBluetoothScoDevice()) applyAudioRoute()
+                        if (hasBluetoothOutputDevice()) applyAudioRoute()
                     }
                 }
             }
@@ -901,13 +904,29 @@ class WebRtcManager {
         scoReceiver = null
     }
 
-    private fun hasBluetoothScoDevice(): Boolean {
+    private fun hasBluetoothOutputDevice(): Boolean {
         val am = audioManager ?: return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return am.isBluetoothScoAvailableOffCall
+
+        // Pre-M: best-effort legacy
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return am.isBluetoothScoAvailableOffCall
+        }
 
         val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        return devices.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+        return devices.any { info ->
+            when (info.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> true
+                else -> if (Build.VERSION.SDK_INT >= 31) {
+                    info.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                            info.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                            info.type == AudioDeviceInfo.TYPE_HEARING_AID
+                } else false
+            }
+
+        }
     }
+
 
     private fun hasWiredHeadset(): Boolean {
         val am = audioManager ?: return false
@@ -922,18 +941,18 @@ class WebRtcManager {
     }
 
     private fun refreshDeviceSignals() {
-        // Availability = "device exists"
-        _isBluetoothAvailable.value = hasBluetoothScoDevice()
+        val btAvailable = hasBluetoothOutputDevice()
+        val wired = hasWiredHeadset()
 
-        // Wired = actual wired output device presence
-        _isWiredActive.value = hasWiredHeadset()
+        _isBluetoothAvailable.value = btAvailable
+        _isWiredActive.value = wired
 
-        // If BT device is not available, force active = false (avoid stale true)
-        if (!_isBluetoothAvailable.value) {
+        if (!btAvailable) {
             _isBluetoothActive.value = false
             lastScoState = AudioManager.SCO_AUDIO_STATE_DISCONNECTED
         }
     }
+
 
     private fun applyAudioRoute() {
         val am = audioManager ?: return
@@ -966,7 +985,8 @@ class WebRtcManager {
             if (_isBluetoothAvailable.value) {
                 am.isSpeakerphoneOn = false
 
-                // Try to start SCO if not connected yet
+                // Start SCO only if there is a possibility of SCO device (handsfree)
+                // If you want it to be simple: just leave startBluetoothSco(), but some devices like to "spam error".
                 if (!am.isBluetoothScoOn && lastScoState != AudioManager.SCO_AUDIO_STATE_CONNECTED) {
                     am.startBluetoothSco()
                 }
@@ -1040,6 +1060,19 @@ class WebRtcManager {
                 delay(ONE_SECOND)
             }
         }
+    }
+
+    fun initAudioMonitoring(context: Context) {
+        // Already init? just refresh
+        appContext = context.applicationContext
+        val ctx = appContext ?: return
+
+        if (audioManager == null) setupAudioManager(ctx)
+
+        registerAudioDeviceMonitoring()
+        registerScoReceiver(ctx)
+
+        refreshDeviceSignals()
     }
 
     private fun stopReconnectingIfAny(via: String) {
