@@ -79,6 +79,7 @@ class CallService : Service(), WebRtcManager.Listener {
         super.onCreate()
 
         webRtc.setListener(this)
+        webRtc.initAudioMonitoring(applicationContext)
 
         tonePlayer = CallTonePlayer(this)
 
