@@ -283,12 +283,10 @@ rooms/{roomId}/calleeCandidates/{autoId}
 
 1. Prepare Firebase project & Firestore
 2. Add `google-services.json` to `app/`
-3. Install app on **two physical devices**
-4. Use the **same roomId**
-5. One device taps **Call**
-6. The other taps **Answer**
-7. Minimize app → call continues (Foreground Service)
-8. Connect Bluetooth earbuds/headset → audio will auto-route (device dependent)
+3. Install app on **two physical devices** and use the **same roomId**
+4. One device taps **Call** and the other taps **Answer**
+5. Minimize app → call continues (Foreground Service)
+6. Connect Bluetooth earbuds/headset → audio will auto-route (device dependent)
 
 ---
 
@@ -300,14 +298,32 @@ rooms/{roomId}/calleeCandidates/{autoId}
 - **Speaker**
     - Controlled via `AudioRoute` + `AudioManager.isSpeakerphoneOn`
 
-- **Bluetooth (Auto)**
-    - Bluetooth is **not manually toggled**
-    - If a Bluetooth SCO device is detected:
-        - App requests SCO automatically
-        - System routes audio to the device
-    - UI indicator reflects **actual SCO connection state**
-        - `true` = SCO connected
-        - `false` = disconnected or unavailable
+- **Bluetooth (Auto + Realtime Device Listener)**
+    - Bluetooth is **not manually toggled** from the UI.
+    - Bluetooth device status is monitored **in realtime**, even while the call state is **Idle** (no need to press Call / Answer to refresh the state).
+    - Detection mechanism:
+        - The app listens to audio device changes via `AudioDeviceCallback` / `onAudioDevicesAdded()` / `onAudioDevicesRemoved()`
+        - This allows the UI to immediately reflect **available / unavailable** when earbuds or headsets are connected or disconnected from system quick settings.
+        - For actual SCO usage, the app listens to `AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED`
+
+    - **Indicator definitions (to avoid misleading UI):**
+        - `isBluetoothAvailable` = a Bluetooth audio device is detected (device presence)
+        - `isBluetoothActive` = Bluetooth SCO is actually connected and used for call audio
+
+    - **Auto routing behavior:**
+        - When `isBluetoothAvailable == true`:
+            - The app attempts `startBluetoothSco()` automatically (best-effort)
+            - UI shows **Active** only after SCO is confirmed connected via broadcast
+        - When a Bluetooth device is disconnected or turned off:
+            - `isBluetoothAvailable` is updated to `false` automatically
+            - `isBluetoothActive` is forced to `false`
+            - Audio route falls back to earpiece / speaker / wired headset
+              based on the routing priority rules
+
+  > Note: Bluetooth behavior varies across OEMs. Some devices report Bluetooth connected
+  > (A2DP) while SCO is not yet active until an in-call session exists.
+  > This project intentionally separates **Available** vs **Active** to reflect real routing state.
+
 
 - **Timer**
     - Based on `SystemClock.elapsedRealtime()`
