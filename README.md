@@ -444,6 +444,7 @@ This prevents:
 ## Roadmaps
 
 - [x] Bluetooth SCO auto-routing
+- [x] Bluetooth device connection status is detected in realtime (before call starts)
 - [x] Reconnect state & recovery indicator
 - [x] Proximity sensor integration (earpiece-only screen off)
 - [x] Call progress tones (connecting / reconnecting) using SoundPool
