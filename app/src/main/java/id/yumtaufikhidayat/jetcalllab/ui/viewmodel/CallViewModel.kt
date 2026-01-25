@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import id.yumtaufikhidayat.jetcalllab.enum.CallRole
 import id.yumtaufikhidayat.jetcalllab.model.CallTempo
 import id.yumtaufikhidayat.jetcalllab.service.CallService
 import id.yumtaufikhidayat.jetcalllab.state.CallState
@@ -41,6 +42,9 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
     private val _tempo = MutableStateFlow<CallTempo?>(null)
     val tempo = _tempo.asStateFlow()
+
+    private val _role = MutableStateFlow<CallRole?>(null)
+    val role = _role.asStateFlow()
 
     private var callService: CallService? = null
     private var serviceBound = false
@@ -90,6 +94,7 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
 
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
+            launch { service.role.collect { _role.value = it } }
             launch { service.state.collect { state ->
                 _state.value = state
 
