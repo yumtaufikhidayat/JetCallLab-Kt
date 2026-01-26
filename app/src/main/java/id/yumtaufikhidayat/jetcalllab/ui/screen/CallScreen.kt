@@ -24,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import id.yumtaufikhidayat.jetcalllab.enum.CallRole
 import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
 import id.yumtaufikhidayat.jetcalllab.ext.formatHms
 import id.yumtaufikhidayat.jetcalllab.state.CallState
@@ -45,6 +46,7 @@ fun CallScreen(
     val isBluetoothAvailable by viewModel.isBluetoothAvailable.collectAsState()
     val isWiredActive by viewModel.isWiredActive.collectAsState()
     val tempo by viewModel.tempo.collectAsState()
+    val role by viewModel.role.collectAsState()
 
     val isInSession = when (state) {
         is CallState.Preparing,
@@ -63,6 +65,12 @@ fun CallScreen(
 
     val showConnectingTempo = (state is CallState.WaitingAnswer || state is CallState.ExchangingIce) && tempo?.phase == TempoPhase.CONNECTING
     val showReconnectTempo = (state is CallState.Reconnecting) && tempo?.phase == TempoPhase.RECONNECTING
+
+    val roleText = when (role) {
+        CallRole.CALLER -> "Caller"
+        CallRole.CALLEE -> "Callee"
+        null -> "—"
+    }
 
     Column(
         modifier = modifier
@@ -142,6 +150,8 @@ fun CallScreen(
         }
 
         Text("Mic permission status: ${if (micPermission.status.isGranted) "granted" else "not granted"}")
+
+        Text(text = "Role: $roleText",)
 
         Text(text = "Call time: ${elapsed.formatHms()}")
 
