@@ -302,7 +302,7 @@ rooms/{roomId}/calleeCandidates/{autoId}
     - Bluetooth is **not manually toggled** from the UI.
     - Bluetooth device status is monitored **in realtime**, even while the call state is **Idle** (no need to press Call / Answer to refresh the state).
     - Detection mechanism:
-        - The app listens to audio device changes via `AudioDeviceCallback` / `onAudioDevicesAdded()` / `onAudioDevicesRemoved()`
+        - The app listens to audio device changes via: `AudioDeviceCallback` / `onAudioDevicesAdded()` / `onAudioDevicesRemoved()`
         - This allows the UI to immediately reflect **available / unavailable** when earbuds or headsets are connected or disconnected from system quick settings.
         - For actual SCO usage, the app listens to `AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED`
 
