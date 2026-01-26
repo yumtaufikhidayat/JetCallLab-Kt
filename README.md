@@ -17,7 +17,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 
 1. [Features](#features)
 2. [UI Preview](#ui-preview)
-3. [Project Structure](#-project-structure)
+3. [Project Structure](#project-structure)
 4. [Core Components](#core-components)
 5. [Tech Stack & Libraries](#tech-stack--libraries)
 6. [How It Works (High Level)](#how-it-works-high-level)
@@ -91,6 +91,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 ---
 
 ## Project Structure
+
 ---
 ```
 app/
