@@ -76,10 +76,11 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 | Condition                                                         | Caller                                                         | Callee                                                           |
 |:------------------------------------------------------------------|:---------------------------------------------------------------|:-----------------------------------------------------------------|
 | Idle                                                              | ![Caller - Idle](docs/images/tab_idle.jpg)                     | ![Callee - Idle](docs/images/phone_idle.jpg)                     |
-| In call (Success)                                                 | ![Caller - Success](docs/images/tab_connected.jpg)             | ![Callee - Success](docs/images/phone_connected.jpg)             |
+| In call (Success)                                                 | ![Caller - Connected](docs/images/tab_connected.jpg)           | ![Callee - Connected](docs/images/phone_connected.jpg)           |
 | In call (Waiting Answer/Exchanging ICE)                           | ![Caller - Waiting Answer](docs/images/tab_waiting_answer.jpg) | ![Callee - Waiting Answer](docs/images/phone_waiting_answer.jpg) |
 | Reconnecting                                                      | ![Caller - Reconnecting](docs/images/tab_reconnecting.jpg)     | ![Callee - Reconnecting](docs/images/phone_reconnecting.jpg)     |
-| Bluetooth Status (auto detected on idle state/on connected state) | ![Caller - Reconnecting](docs/images/tab_bluetooth.gif)        | ![Callee - Reconnecting](docs/images/phone_bluetooth.gif)        |
+| Bluetooth Status (auto detected on idle state/on connected state) | ![Caller - Connected](docs/images/tab_bluetooth.gif)           | ![Callee - Connected](docs/images/phone_bluetooth.gif)           |
+| Proximity Sensor                                                  | ![Caller - Connected](docs/images/tab_proximity.mp4)           | ![Callee - Connected](docs/images/phone_proximity.mp4)           |
 
 ### What you can do
 - Start as **Caller** or **Callee** using the same `roomId`
