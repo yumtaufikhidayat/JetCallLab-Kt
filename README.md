@@ -80,7 +80,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 | In call (Waiting Answer/Exchanging ICE)                           | ![Caller - Waiting Answer](docs/images/tab_waiting_answer.jpg) | ![Callee - Waiting Answer](docs/images/phone_waiting_answer.jpg) |
 | Reconnecting                                                      | ![Caller - Reconnecting](docs/images/tab_reconnecting.jpg)     | ![Callee - Reconnecting](docs/images/phone_reconnecting.jpg)     |
 | Bluetooth Status (auto detected on idle state/on connected state) | ![Caller - Connected](docs/images/tab_bluetooth.gif)           | ![Callee - Connected](docs/images/phone_bluetooth.gif)           |
-| Proximity Sensor                                                  | ![Caller - Connected](docs/images/tab_proximity.mp4)           | ![Callee - Connected](docs/images/phone_proximity.mp4)           |
+| Proximity Sensor                                                  | ![Caller - Connected](docs/images/tab_proximity.gif)           | ![Callee - Connected](docs/images/phone_proximity.gif)           |
 
 ### What you can do
 - Start as **Caller** or **Callee** using the same `roomId`
