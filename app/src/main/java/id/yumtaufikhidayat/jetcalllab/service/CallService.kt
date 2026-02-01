@@ -1,14 +1,18 @@
 package id.yumtaufikhidayat.jetcalllab.service
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
+import id.yumtaufikhidayat.jetcalllab.MainActivity
 import id.yumtaufikhidayat.jetcalllab.R
 import id.yumtaufikhidayat.jetcalllab.enum.CallRole
 import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
@@ -26,6 +30,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class CallService : Service(), WebRtcManager.Listener {
@@ -61,13 +67,15 @@ class CallService : Service(), WebRtcManager.Listener {
     val role: StateFlow<CallRole?> = _role.asStateFlow()
 
     private var autoHangupJob: Job? = null
+    private var timerJob: Job? = null
+    private var deviceJob: Job? = null
+    private var notifJob: Job? = null
 
     @Volatile
     private var isAutoTerminating = false
 
     private var callStartElapsedMs: Long? = null
-    private var timerJob: Job? = null
-    private var deviceJob: Job? = null
+    private var callStartWallTimeMs: Long? = null
 
     private var proximity: ProximityController? = null
     private var tonePlayer: CallTonePlayer? = null
@@ -116,6 +124,7 @@ class CallService : Service(), WebRtcManager.Listener {
     }
 
     override fun onDestroy() {
+        stopNotificationUpdates()
         autoHangupJob?.cancel()
         autoHangupJob = null
 
@@ -192,19 +201,11 @@ class CallService : Service(), WebRtcManager.Listener {
 
             when (state) {
                 is CallState.ConnectedFinal -> {
-                    updateForegroundNotification("Connected (${state.via})")
                     startTimerIfNeeded()
                 }
 
-                is CallState.Connected -> {
-                    updateForegroundNotification("Connected (${state.via})")
-                }
-
-                is CallState.Reconnecting -> {
-                    updateForegroundNotification(
-                        "Reconnecting… attempt ${state.attempt} (${state.elapsedSeconds}s)"
-                    )
-                }
+                is CallState.Connected -> updateForegroundNotificationForCurrentState()
+                is CallState.Reconnecting -> updateForegroundNotificationForCurrentState()
 
                 is CallState.FailedFinal -> {
                     resetAudioUiState()
@@ -225,6 +226,7 @@ class CallService : Service(), WebRtcManager.Listener {
                 }
 
                 is CallState.Idle -> {
+                    stopNotificationUpdates()
                     resetAudioUiState()
                     stopTimer(reset = true)
 
@@ -289,9 +291,8 @@ class CallService : Service(), WebRtcManager.Listener {
     // Timer
     private fun startTimerIfNeeded() {
         if (timerJob != null) return
-        if (callStartElapsedMs == null) {
-            callStartElapsedMs = SystemClock.elapsedRealtime()
-        }
+        if (callStartElapsedMs == null) callStartElapsedMs = SystemClock.elapsedRealtime()
+        if (callStartWallTimeMs == null) callStartWallTimeMs = System.currentTimeMillis()
 
         timerJob = serviceScope.launch {
             while (true) {
@@ -307,6 +308,7 @@ class CallService : Service(), WebRtcManager.Listener {
         timerJob?.cancel()
         timerJob = null
         if (reset) {
+            callStartWallTimeMs = null
             callStartElapsedMs = null
             _elapsedSeconds.value = 0L
         }
@@ -319,19 +321,28 @@ class CallService : Service(), WebRtcManager.Listener {
         webRtc.setSpeakerOn(false)
     }
 
-    
     // Foreground
     private fun startAsForegroundIfNeeded() {
         createNotificationChannelIfNeeded()
 
-        val notification = NotificationCompat.Builder(this, "call_channel")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Call in progress")
-            .setContentText("Room: ...")
-            .setOngoing(true)
-            .build()
+        val notification = buildCallNotification(
+            title = "JetCallLab",
+            text = "Connecting…",
+            useChronometer = false,
+            whenMs = null
+        )
 
-        startForeground(1001, notification)
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
+
+        startNotificationUpdatesIfNeeded()
     }
 
     private fun createNotificationChannelIfNeeded() {
@@ -346,17 +357,31 @@ class CallService : Service(), WebRtcManager.Listener {
         }
     }
 
-    private fun updateForegroundNotification(text: String) {
-        val notification = NotificationCompat.Builder(this, "call_channel")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Call in progress")
-            .setContentText(text)
-            .setOngoing(true)
-            .build()
+    private fun updateForegroundNotificationForCurrentState() {
+        val callState = _state.value
+        val chrono = shouldShowChronometer(callState)
+        val whenMs = if (chrono) callStartWallTimeMs else null
 
-        getSystemService(NotificationManager::class.java)
-            .notify(1001, notification)
+        val title = "JetCallLab"
+        val text = when (callState) {
+            is CallState.ConnectedFinal, is CallState.Connected -> "In call"
+            is CallState.Reconnecting -> "Reconnecting… attempt ${callState.attempt}"
+            is CallState.WaitingAnswer -> "Waiting answer…"
+            is CallState.ExchangingIce -> "Exchanging ICE…"
+            is CallState.Failed, is CallState.FailedFinal -> "Call failed"
+            else -> "Connecting…"
+        }
+
+        val notif = buildCallNotification(
+            title = title,
+            text = text,
+            useChronometer = chrono,
+            whenMs = whenMs
+        )
+
+        getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notif)
     }
+
 
     private fun scheduleAutoHangup(
         reasonForUser: String?,
@@ -372,12 +397,77 @@ class CallService : Service(), WebRtcManager.Listener {
             _tempo.value = null
 
             // Update notif for consistency
-            reasonForUser?.let { updateForegroundNotification(it) }
+            reasonForUser?.let { updateForegroundNotificationForCurrentState() }
             delay(delayMs)
 
             // Prevent re-entrancy
             isAutoTerminating = true
             webRtc.endCall()
         }
+    }
+
+    private fun startNotificationUpdatesIfNeeded() {
+        if (notifJob != null) return
+
+        notifJob = serviceScope.launch {
+            combine(_state, _elapsedSeconds, _tempo) { state, elapsed, tempo -> Triple(state, elapsed, tempo) }
+                .distinctUntilChanged()
+                .collect {
+                    updateForegroundNotificationForCurrentState()
+                }
+        }
+    }
+
+    private fun stopNotificationUpdates() {
+        notifJob?.cancel()
+        notifJob = null
+    }
+
+    private fun buildCallNotification(
+        title: String,
+        text: String,
+        useChronometer: Boolean,
+        whenMs: Long?
+    ): Notification {
+        val launchIntent = Intent(this, MainActivity::class.java).apply { // Change MainActivity::class.java with actual UI
+            action = ACTION_SHOW_CALL
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        val pi = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true) // let update notification so it never always triggered
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setShowWhen(useChronometer)
+            .setWhen(whenMs ?: System.currentTimeMillis())
+            .setUsesChronometer(useChronometer)
+            .build()
+    }
+
+    private fun shouldShowChronometer(state: CallState): Boolean =
+        state is CallState.ConnectedFinal || state is CallState.Connected || state is CallState.Reconnecting
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startAsForegroundIfNeeded() // startForeground directly, do not wait the call
+        return START_STICKY
+    }
+
+    companion object {
+        const val CHANNEL_ID = "call_channel"
+        const val NOTIF_ID = 1001
+
+        const val ACTION_SHOW_CALL = "jetcalllab.action.SHOW_CALL"
+        const val ACTION_END_CALL = "jetcalllab.action.END_CALL"
     }
 }
