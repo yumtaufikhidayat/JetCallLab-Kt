@@ -12,37 +12,41 @@ fun PermissionGateDialog(
     notifGranted: Boolean,
     needNotifPermission: Boolean,
     notificationsEnabled: Boolean,
+    runtimeNotifDenied: Boolean, // <--- Tambahkan parameter ini
     isCall: Boolean,
     onDismiss: () -> Unit,
-    onGrant: () -> Unit,
-    onOpenSettings: () -> Unit,
+    onPrimary: () -> Unit,
+    onOpenNotifSettings: () -> Unit,
 ) {
     val missingMic = !micGranted
-    val missingNotif = needNotifPermission && (!notifGranted || !notificationsEnabled)
-    val msg = "To ${if (isCall) "start" else "answer"}"
+    val missingNotifPermission = needNotifPermission && !notifGranted
+
+    val notifBlocked = (needNotifPermission && notifGranted && !notificationsEnabled) || (missingNotifPermission && runtimeNotifDenied)
+
+    val header = if (isCall) "Start call" else "Answer call"
 
     val message = buildString {
-        append("$msg a call, JetCallLab needs:\n\n")
-        if (missingMic) append("• Microphone\n")
-        if (missingNotif) append("• Notifications (for ongoing call)\n")
+        append("$header needs:\n\n")
+        if (missingMic) append("• Microphone access\n")
+        if (missingNotifPermission) append("• Notification permission\n")
+        if (notifBlocked && !missingNotifPermission) append("• Notifications enabled in system settings\n")
     }
 
-    // CTA logic:
-    // - If notif is blocked at system/channel level, runtime request won't help → go settings
-    // - If notif permission isn't granted yet (and notificationsEnabled is true), runtime request may help → grant
-    val shouldOpenSettings = (needNotifPermission && !notificationsEnabled) // notif blocked by system/channel
-    val primaryText = if (shouldOpenSettings) "Open settings" else "Grant permissions"
+    val primaryText = when {
+        missingMic -> "Allow microphone"
+        notifBlocked -> "Open notification settings"
+        missingNotifPermission -> "Allow notifications"
+        else -> if (isCall) "Start" else "Answer"
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Permission required") },
         text = { Text(message) },
         confirmButton = {
-            Button(
-                onClick = {
-                    if (shouldOpenSettings) onOpenSettings() else onGrant()
-                }
-            ) { Text(primaryText) }
+            Button(onClick = {
+                if (notifBlocked) onOpenNotifSettings() else onPrimary()
+            }) { Text(primaryText) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
