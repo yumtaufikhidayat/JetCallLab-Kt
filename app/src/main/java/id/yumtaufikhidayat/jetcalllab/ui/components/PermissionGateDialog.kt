@@ -12,7 +12,7 @@ fun PermissionGateDialog(
     notifGranted: Boolean,
     needNotifPermission: Boolean,
     notificationsEnabled: Boolean,
-    runtimeNotifDenied: Boolean, // <--- Tambahkan parameter ini
+    runtimeNotifDenied: Boolean,
     isCall: Boolean,
     onDismiss: () -> Unit,
     onPrimary: () -> Unit,
