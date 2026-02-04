@@ -1,5 +1,7 @@
 package id.yumtaufikhidayat.jetcalllab.ui.screen
 
+import android.Manifest
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,15 +22,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 import id.yumtaufikhidayat.jetcalllab.enum.CallRole
+import id.yumtaufikhidayat.jetcalllab.enum.GateStage
+import id.yumtaufikhidayat.jetcalllab.enum.PendingAction
 import id.yumtaufikhidayat.jetcalllab.enum.TempoPhase
 import id.yumtaufikhidayat.jetcalllab.ext.formatHms
+import id.yumtaufikhidayat.jetcalllab.ext.openAppNotificationSettings
+import id.yumtaufikhidayat.jetcalllab.ext.openAppSettings
 import id.yumtaufikhidayat.jetcalllab.state.CallState
+import id.yumtaufikhidayat.jetcalllab.ui.components.AudioPermissionDeniedDialog
+import id.yumtaufikhidayat.jetcalllab.ui.components.PermissionGateDialog
 import id.yumtaufikhidayat.jetcalllab.ui.viewmodel.CallViewModel
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -37,8 +52,9 @@ fun CallScreen(
     viewModel: CallViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val micPermission = rememberPermissionState(android.Manifest.permission.RECORD_AUDIO)
-    var roomId by rememberSaveable { mutableStateOf("room_test_") }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
@@ -47,6 +63,54 @@ fun CallScreen(
     val isWiredActive by viewModel.isWiredActive.collectAsState()
     val tempo by viewModel.tempo.collectAsState()
     val role by viewModel.role.collectAsState()
+    var roomId by rememberSaveable { mutableStateOf("room_test_") }
+
+    // gate / pending action
+    var gateStage by rememberSaveable { mutableStateOf<GateStage?>(null) }
+    var pendingAction by rememberSaveable { mutableStateOf<PendingAction?>(null) }
+
+    // Flag to track if user deny runtime permission in just
+    var runtimeNotifDenied by rememberSaveable { mutableStateOf(false) }
+    var isRequestingPermission by rememberSaveable { mutableStateOf(false) }
+
+    fun startPendingAction() {
+        when (pendingAction) {
+            PendingAction.CALL -> viewModel.startCaller(roomId.trim())
+            PendingAction.ANSWER -> viewModel.joinCallee(roomId.trim())
+            else -> Unit
+        }
+        pendingAction = null
+    }
+
+    // mic permissions
+    val micPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO) { isGranted ->
+        // Callback triggered if user choose Allow or Deny
+        gateStage = if (!isGranted) GateStage.AUDIO_SETTINGS else GateStage.GATE
+    }
+
+    val needNotifPermission = Build.VERSION.SDK_INT >= 33
+    val notifPermission = if (needNotifPermission) {
+        rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS) { isGranted ->
+            isRequestingPermission = false
+
+            if (isGranted) {
+                val isSystemEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+                if (isSystemEnabled) {
+                    startPendingAction()
+                    gateStage = null
+                } else {
+                    gateStage = GateStage.GATE
+                }
+            } else {
+                runtimeNotifDenied = true
+                gateStage = GateStage.GATE
+            }
+        }
+    } else null
+
+    val micGranted = micPermission.status.isGranted
+    val notifGranted = !needNotifPermission || (notifPermission?.status?.isGranted == true)
+    val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     val isInSession = when (state) {
         is CallState.Preparing,
@@ -58,8 +122,9 @@ fun CallScreen(
         is CallState.ConnectedFinal,
         is CallState.Connected,
         is CallState.Reconnecting -> true
-        else -> false // Failed/FailedFinal/Ending/Idle
+        else -> false
     }
+
     val isRoomInputEnabled = !isInSession
     val callAnswerEnabled = !isInSession && roomId.isNotBlank()
 
@@ -72,13 +137,79 @@ fun CallScreen(
         null -> "—"
     }
 
+    fun onStartAction(action: PendingAction) {
+        pendingAction = action
+        val isNotifOk = if (needNotifPermission) notifGranted && notificationsEnabled else notificationsEnabled
+
+        if (micGranted && isNotifOk) {
+            startPendingAction()
+        } else {
+            gateStage = GateStage.GATE
+        }
+    }
+
+    fun proceedFromGate() {
+        // MIC first
+        if (!micGranted) {
+            gateStage = null
+            isRequestingPermission = true
+            micPermission.launchPermissionRequest()
+            return
+        }
+
+        // notif runtime (Android 13+)
+        if (needNotifPermission && !notifGranted) {
+            gateStage = null
+            if (runtimeNotifDenied) {
+                context.openAppNotificationSettings()
+            } else {
+                isRequestingPermission = true
+                notifPermission?.launchPermissionRequest()
+            }
+            return
+        }
+
+        // notif blocked by system/channel
+        if (!notificationsEnabled) {
+            gateStage = null
+            context.openAppNotificationSettings()
+            return
+        }
+
+        // all ok -> auto start call/answer directly
+        startPendingAction()
+        gateStage = null
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (isRequestingPermission) return@LifecycleEventObserver
+
+                if (pendingAction != null) {
+                    val isNotifOk = if (needNotifPermission) notifGranted && notificationsEnabled else notificationsEnabled
+
+                    if (micGranted && isNotifOk) {
+                        startPendingAction()
+                        gateStage = null
+                    } else {
+                        if (gateStage == null) {
+                            gateStage = GateStage.GATE
+                        }
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
         Text(text = "State: ${state::class.simpleName}")
-
         Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(
@@ -98,31 +229,44 @@ fun CallScreen(
         ) {
             Button(
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    if (micPermission.status.isGranted) {
-                        viewModel.startCaller(roomId.trim())
-                    } else {
-                        micPermission.launchPermissionRequest()
-                    }
-                },
+                onClick = { onStartAction(PendingAction.CALL) },
                 enabled = callAnswerEnabled
-            ) {
-                Text(text = "Call")
-            }
+            ) { Text("Call") }
 
             Button(
-                onClick = {
-                    if (micPermission.status.isGranted) {
-                        viewModel.joinCallee(roomId.trim())
-                    } else {
-                        micPermission.launchPermissionRequest()
-                    }
-                },
                 modifier = Modifier.weight(1f),
+                onClick = { onStartAction(PendingAction.ANSWER) },
                 enabled = callAnswerEnabled
-            ) {
-                Text("Answer")
-            }
+            ) { Text("Answer") }
+        }
+
+        if (gateStage == GateStage.GATE) {
+            PermissionGateDialog(
+                micGranted = micGranted,
+                notifGranted = notifGranted,
+                needNotifPermission = needNotifPermission,
+                notificationsEnabled = notificationsEnabled,
+                runtimeNotifDenied = runtimeNotifDenied,
+                isCall = (pendingAction == PendingAction.CALL),
+                onDismiss = {
+                    gateStage = null
+                    pendingAction = null
+                    runtimeNotifDenied = false
+                },
+                onPrimary = { proceedFromGate() },
+                onOpenNotifSettings = { context.openAppNotificationSettings() }
+            )
+        }
+
+        if (gateStage == GateStage.AUDIO_SETTINGS) {
+            AudioPermissionDeniedDialog(
+                isCall = (pendingAction == PendingAction.CALL),
+                onDismiss = {
+                    gateStage = null
+                    pendingAction = null
+                },
+                onOpenMicSettings = { context.openAppSettings() }
+            )
         }
 
         Row(
@@ -149,46 +293,36 @@ fun CallScreen(
             ) { Text(if (isSpeakerOn) "Speaker On" else "Speaker Off") }
         }
 
-        Text("Mic permission status: ${if (micPermission.status.isGranted) "granted" else "not granted"}")
-
-        Text(text = "Role: $roleText",)
-
-        Text(text = "Call time: ${elapsed.formatHms()}")
-
-        Text(text = "Mute: ${if (isMuted) "on" else "off"}")
-
-        Text(text = "Speaker: ${if (isSpeakerOn) "on" else "off"}")
-
-        Text(text = "Bluetooth: ${if (isBluetoothActive) "on" else "off"}")
-
-        if (showConnectingTempo) {
-            Text("Waiting answer… ${tempo?.remainingSeconds}s left")
+        Text("Mic permission: ${if (micGranted) "granted" else "not granted"}")
+        if (needNotifPermission) {
+            val status = notifPermission?.status
+            Text("Notification permission: ${if (status?.isGranted == true) "granted" else "not granted"}")
+            Text("Should show rationale: ${status?.shouldShowRationale}")
         }
 
-        if (showReconnectTempo) {
-            Text("Reconnecting… ${tempo?.remainingSeconds}s left")
-        }
+        Text("Role: $roleText")
+        Text("Call time: ${elapsed.formatHms()}")
+        Text("Mute: ${if (isMuted) "on" else "off"}")
+        Text("Speaker: ${if (isSpeakerOn) "on" else "off"}")
+        Text("Bluetooth: ${if (isBluetoothActive) "on" else "off"}")
 
-        when (val s = state) {
-            is CallState.Connected -> {
-                Text("Connected")
-                Text("Via: ${s.via}")
+        if (showConnectingTempo) Text("Waiting answer… ${tempo?.remainingSeconds}s left")
+        if (showReconnectTempo) Text("Reconnecting… ${tempo?.remainingSeconds}s left")
+
+        when (val callState = state) {
+            is CallState.Connected, is CallState.ConnectedFinal -> {
+                val via = when (callState) {
+                    is CallState.Connected -> callState.via
+                    is CallState.ConnectedFinal -> callState.via
+                    else -> ""
+                }
+                Text("${state::class.simpleName} via $via")
             }
-
-            is CallState.ConnectedFinal -> {
-                Text("Connected")
-                Text("Via: ${s.via}")
-            }
-
-            is CallState.FailedFinal -> {
-                Text("Failed: ${s.reason}")
-            }
-
+            is CallState.FailedFinal -> Text("Failed: ${callState.reason}")
             else -> Unit
         }
 
-        Text(text = "Bluetooth: ${if (isBluetoothAvailable) "available" else "unavailable" }")
-
-        Text(text = "Wired headset: ${if (isWiredActive) "on" else "off"}")
+        Text("Bluetooth: ${if (isBluetoothAvailable) "available" else "unavailable"}")
+        Text("Wired headset: ${if (isWiredActive) "available" else "unavailable"}")
     }
 }
