@@ -1,5 +1,5 @@
 package id.yumtaufikhidayat.jetcalllab.enum
 
-enum class PendingCallAction {
+enum class PendingAction {
     CALL, ANSWER
 }
