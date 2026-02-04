@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import androidx.core.content.ContextCompat.startForegroundService
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import id.yumtaufikhidayat.jetcalllab.enum.CallRole
@@ -85,8 +86,13 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
     private fun bindService() {
         val context = getApplication<Application>()
         val intent = Intent(context, CallService::class.java)
-        context.startService(intent)
         context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+    }
+
+    private fun ensureServiceStarted() {
+        val context = getApplication<Application>()
+        val intent = Intent(context, CallService::class.java)
+        startForegroundService(context, intent)
     }
 
     private fun observeServiceState() {
@@ -130,6 +136,7 @@ class CallViewModel(application: Application): AndroidViewModel(application) {
     }
 
     fun startCaller(roomId: String) {
+        ensureServiceStarted()
         callService?.startCaller(roomId)
     }
 
