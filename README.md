@@ -158,6 +158,7 @@ app/
 
 ### `CallService`
 - Runs the call session inside a **Foreground Service**
+- Manages the call lifecycle, timer (tempo), and coordinates audio tones and proximity sensors
 - Owns:
   - Call lifecycle & state propagation
   - Reconnect state propagation
@@ -174,7 +175,8 @@ app/
     - `isWiredActive: StateFlow<Boolean>`
 
 ### `WebRtcManager`
-- WebRTC engine abstraction
+- The core WebRTC abstraction handling PeerConnection and ICE monitoring
+- Implements auto-routing logic: Wired → Bluetooth SCO → Speaker → Earpiece
 - Responsibilities:
   - PeerConnection creation
   - ICE server configuration
@@ -189,6 +191,9 @@ app/
   - Wired → Speaker (if explicitly chosen) → Bluetooth SCO (AUTO) → Earpiece fallback
   - Bluetooth is auto-routed, not toggled
 
+### `PermissionGateDialog`
+- Located in ui/components, it manages the complex permission flow required for microphone access before a call starts
+
 ### `ProximityController`
 - Implements “phone-call like” UX by turning the screen off when the device is close to the user’s face
 - Uses:
@@ -197,7 +202,7 @@ app/
 - Enabled only when it makes sense (earpiece mode), and automatically disabled on other routes
 
 ### `FirestoreSignaling`
-- Signaling channel implementation using **Firebase Firestore**
+- A coordination layer using **Firebase Firestore** to exchange SDP Offers, Answers, and ICE Candidates
 - Stores:
     - Offer
     - Answer
