@@ -398,6 +398,9 @@ If a device does not support proximity:
 ## Reconnect & Network Recovery
 
 JetCallLab does not guarantee seamless reconnection, but it demonstrates how apps detect and react to network instability.
+1. Detects `ICE DISCONNECTED / FAILED` state
+2. Emits Reconnecting state with attempt count
+3. Returns to `Connected` once the ICE layer recovers without an explicit ICE restart
 
 ### Observed & Tested Scenarios
 - WiFi → airplane mode → WiFi
