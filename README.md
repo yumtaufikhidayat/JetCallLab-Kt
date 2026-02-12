@@ -365,6 +365,10 @@ JetCallLab includes call progress tones so the user gets audio feedback during n
 ## Proximity & In-Call Screen Behavior
 JetCallLab includes a ProximityController to mimic real calling apps behavior: turn off the screen when the phone is near the user’s face (to prevent accidental touches).
 
+### Proximity Behavior
+- Automatically turns off the screen using PROXIMITY_SCREEN_OFF_WAKE_LOCK only when the user uses the earpiece
+- It is automatically disabled when the speaker, wired headset, or Bluetooth is active
+
 ### Core idea
 - Register the proximity sensor
 - When NEAR → acquire PROXIMITY_SCREEN_OFF_WAKE_LOCK
@@ -386,7 +390,7 @@ Proximity is enabled only for in-call earpiece mode, meaning:
 
 This prevents “weird UX” such as screen turning off while the user is on speaker or using earbuds.
 
-**Why `PROXIMITY_SCREEN_OFF_WAKE_LOCK?`**
+**Why `PROXIMITY_SCREEN_OFF_WAKE_LOCK`?**
 Android marks it deprecated, but in practice it’s still the closest behavior to what calling apps do—as long as the device supports proximity wake locks.
 
 If a device does not support proximity:
