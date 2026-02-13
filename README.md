@@ -427,25 +427,25 @@ JetCallLab does not guarantee seamless reconnection, but it demonstrates how app
 
 ## Lifecycle & Resource Management
 
-On `endCall()`:
-- Proximity listener is stopped
-- WakeLock is released (if held)
-- Cancel coroutines & timeouts
-- Remove Firestore listeners
-- Close & dispose:
-    - PeerConnection
-    - AudioSource & AudioTrack
-    - AudioDeviceModule
-- Restore:
-    - Audio mode
-    - Speaker & Bluetooth state
-- Abandon audio focus
-- Stop foreground service
+- On `endCall()`:
+  - Proximity listener is stopped
+  - WakeLock is released (if held)
+  - Cancel coroutines & timeouts
+  - Remove Firestore listeners
+  - Close & dispose:
+      - PeerConnection
+      - AudioSource & AudioTrack
+      - AudioDeviceModule
+  - Restore:
+      - Audio mode
+      - Speaker & Bluetooth state
+  - Abandon audio focus
+  - Stop foreground service
 
-This prevents:
-- Memory leaks
-- Audio routing bugs
-- Zombie background calls
+- This prevents:
+  - Memory leaks
+  - Audio routing bugs
+  - Zombie background calls
 
 ---
 
