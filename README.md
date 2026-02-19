@@ -441,7 +441,7 @@ This prevents:
 - TURN over **TCP/TLS 443** has the highest success rate
 - Even with TURN, some networks may still block calls
 
-> Intermittent connectivity on office WiFi is expected behavior.
+> Intermittent connectivity on office Wi-Fi is expected behavior.
 
 ---
 
