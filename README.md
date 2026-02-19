@@ -60,7 +60,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
     - Uses proximity sensor + `PROXIMITY_SCREEN_OFF_WAKE_LOCK`
     - Enabled only for **in-call earpiece mode**
     - Automatically releases on speaker/Bluetooth/wired headset
-- ✅ Network reconnect awareness (best effort)
+- ✅ Network reconnect awareness (the best effort)
     - Detects `ICE DISCONNECTED / FAILED`
     - Emits `Reconnecting state with attempt count & elapsed seconds`
     - Returns to `Connected` when ICE recovers
