@@ -467,6 +467,7 @@ This prevents:
 - [x] Reconnect state & recovery indicator
 - [x] Proximity sensor integration (earpiece-only screen off)
 - [x] Call progress tones (connecting / reconnecting) using SoundPool
+- [x] In-call notification
 - [ ] Incoming call notification
 
 ---
