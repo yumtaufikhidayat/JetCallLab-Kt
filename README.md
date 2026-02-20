@@ -44,7 +44,7 @@ JetCallLab is a **learning-oriented Android project** to explore how **real-time
 - ✅ **Mute / Unmute** toggle
 - ✅ **Speaker On / Off** toggle
 - ✅ Auto audio routing
-     - Wired headset has highest priority
+     - Wired headset has the highest priority
      - Bluetooth SCO auto-connect when a compatible device is detected
      - Speaker enabled only via user toggle (explicit intent)
      - Routing is re-evaluated when devices change
