@@ -100,12 +100,17 @@ app/
 ├── enum/
 │   ├── AudioRoute.kt          # EARPIECE / SPEAKER (Bluetooth auto-detected)
 │   ├── CallRole.kt            # CALLER / CALLEE role in a call session
+│   ├── GateStage.kt            # Navigation/Permission gate stages
+│   ├── PendingAction.kt       # Actions deferred during state transitions
 │   ├── RoutePreference.kt     # Routing intention: AUTO vs SPEAKER (explicit user intent)
 │   ├── TempoPhase.kt          # CONNECTING / RECONNECTING phase for timer & UX
 │   └── ToneType.kt            # CONNECTING / RECONNECTING tone types
 │
 ├── ext/
-│   └── LongExt.kt             # Time formatting helpers (e.g. elapsedSeconds → HH:mm:ss)
+│   ├── LongExt.kt             # Time formatting helpers (e.g. elapsedSeconds → HH:mm:ss)
+│   ├── IntentExt.kt           # Intent parsing & Service starting helpers
+│   ├── ContextExt.kt          # Context & Permission helpers
+│   └── NotificationExt.kt     # Foreground Notification builders
 │
 ├── model/
 │   └── CallTempo.kt           # Model representing call timer state (elapsed, remaining, timeout)
@@ -124,19 +129,17 @@ app/
 │                              #  Reconnecting, FailedFinal, Ending)
 │
 ├── ui/
-│   └── screen/
-│       └── CallScreen.kt      # Compose UI (dumb UI):
-│                              # Call / Answer / End / Mute / Speaker
-│                              # Pure state-driven rendering
-│
-├── theme/
-│   ├── Color.kt               # App color definitions
-│   ├── Theme.kt               # Compose theme setup
-│   └── Type.kt                # Typography definitions
-│
-├── viewmodel/
-│   └── CallViewModel.kt       # Bridges CallService → UI using StateFlow
-│                              # Keeps UI logic minimal
+│   ├── components/            # Reusable UI Widgets
+│   │   ├── AudioPermissionDenied.kt
+│   │   └── PermissionGateDialog.kt # Handles permission flow UX
+│   ├── screen/
+│   │   └── CallScreen.kt      # Main Call UI (Pure state-driven)
+│   ├── theme/                 # Design System (Color, Type, Theme)
+│   │   ├── Color.kt           # App color definitions
+│   │   ├── Theme.kt           # Compose theme setup
+│   │   └── Type.kt            # Typography definitions
+│   └── viewmodel/
+│       └── CallViewModel.kt   # Bridges CallService → UI using StateFlow
 │
 ├── utils/
 │   ├── CallTonePlayer.kt      # SoundPool-based tones (connecting / reconnecting)
