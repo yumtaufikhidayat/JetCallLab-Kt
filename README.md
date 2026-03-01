@@ -100,7 +100,7 @@ app/
 ├── enum/
 │   ├── AudioRoute.kt          # EARPIECE / SPEAKER (Bluetooth auto-detected)
 │   ├── CallRole.kt            # CALLER / CALLEE role in a call session
-│   ├── GateStage.kt            # Navigation/Permission gate stages
+│   ├── GateStage.kt           # Navigation/Permission gate stages
 │   ├── PendingAction.kt       # Actions deferred during state transitions
 │   ├── RoutePreference.kt     # Routing intention: AUTO vs SPEAKER (explicit user intent)
 │   ├── TempoPhase.kt          # CONNECTING / RECONNECTING phase for timer & UX
